@@ -1,4 +1,87 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">即时问答</string>
+    <string name="app_name">即问即答</string>
+    
+    <!-- Auth -->
+    <string name="login">登录</string>
+    <string name="register">注册</string>
+    <string name="username">用户名</string>
+    <string name="password">密码</string>
+    <string name="confirm_password">确认密码</string>
+    <string name="select_role">选择角色</string>
+    <string name="student">学生</string>
+    <string name="tutor">导师</string>
+    <string name="dont_have_account">还没有账号？立即注册</string>
+    <string name="already_have_account">已有账号？立即登录</string>
+    
+    <!-- Questions -->
+    <string name="my_questions">我的问题</string>
+    <string name="pending_questions">待回答问题</string>
+    <string name="ask_question">提问</string>
+    <string name="question_content">问题内容</string>
+    <string name="add_image">添加图片</string>
+    <string name="submit">提交</string>
+    <string name="answer">回答</string>
+    <string name="question_detail">问题详情</string>
+    
+    <!-- Common -->
+    <string name="logout">退出登录</string>
+    <string name="loading">加载中...</string>
+    <string name="error">错误</string>
+    <string name="success">成功</string>
+    <string name="cancel">取消</string>
+    <string name="ok">确定</string>
+    <string name="no_data">暂无数据</string>
+    
+    <!-- Error Messages -->
+    <string name="passwords_do_not_match">密码不匹配</string>
+    <string name="permission_denied">权限被拒绝</string>
+    <string name="please_enter_question_content">请输入问题内容</string>
+    <string name="failed_to_upload_image">图片上传失败</string>
+    <string name="upload_error">上传错误：%s</string>
+    <string name="error_message">错误：%s</string>
+    <string name="invalid_question">无效的问题</string>
+    <string name="username_password_required">用户名和密码不能为空</string>
+    <string name="login_failed">登录失败：%s</string>
+    <string name="network_error">网络错误：%s</string>
+    <string name="registration_failed">注册失败：%s</string>
+    <string name="please_enter_message">请输入消息</string>
+    <string name="failed_to_create_question">创建问题失败</string>
+    <string name="failed_to_send_message">发送消息失败</string>
+    <string name="failed_to_accept_question">接受问题失败</string>
+    <string name="failed_to_close_question">关闭问题失败</string>
+    
+    <!-- Status Messages -->
+    <string name="connected_to_server">已连接到服务器</string>
+    <string name="question_submitted">问题已提交！</string>
+    <string name="question_accepted">已接受问题</string>
+    <string name="question_closed">问题已关闭</string>
+    
+    <!-- Question Status -->
+    <string name="status_pending">等待老师接受...</string>
+    <string name="status_in_progress">老师正在回答</string>
+    <string name="status_closed">问题已关闭</string>
+    
+    <!-- Tutor Tabs -->
+    <string name="tab_pending">待接受</string>
+    <string name="tab_in_progress">进行中</string>
+    <string name="tab_completed">已完成</string>
+    
+    <!-- Activity Titles -->
+    <string name="answer_question">回答问题</string>
+    <string name="accept_question">接受问题</string>
+    <string name="close_question">关闭问题</string>
+    <string name="send_msg">发送</string>
+    <string name="message_placeholder">输入消息...</string>
+    
+    <!-- Pagination -->
+    <string name="loading_more">加载更多...</string>
+    <string name="no_more_data">没有更多数据了</string>
+    <string name="load_failed">加载失败，点击重试</string>
+    
+    <!-- Message Read Status -->
+    <string name="unread_messages">%d 条未读</string>
+    <string name="mark_as_read">标记为已读</string>
+    <string name="all_messages_read">所有消息已读</string>
+    <string name="no_question_exists">暂无问题</string>
 </resources>
