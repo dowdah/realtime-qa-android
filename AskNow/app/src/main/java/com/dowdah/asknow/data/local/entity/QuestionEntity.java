@@ -26,7 +26,7 @@ public class QuestionEntity {
     private Long tutorId; // 接受问题的老师ID
     private String content;
     @Nullable
-    private String imagePath;
+    private String imagePaths; // JSON 格式存储多图片路径
     private String status; // "pending", "in_progress", "closed"
     private long createdAt;
     private long updatedAt;
@@ -35,11 +35,11 @@ public class QuestionEntity {
     }
 
     @Ignore
-    public QuestionEntity(long userId, Long tutorId, String content, String imagePath, String status, long createdAt, long updatedAt) {
+    public QuestionEntity(long userId, Long tutorId, String content, String imagePaths, String status, long createdAt, long updatedAt) {
         this.userId = userId;
         this.tutorId = tutorId;
         this.content = content;
-        this.imagePath = imagePath;
+        this.imagePaths = imagePaths;
         this.status = status;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -78,12 +78,12 @@ public class QuestionEntity {
         this.content = content;
     }
 
-    public String getImagePath() {
-        return imagePath;
+    public String getImagePaths() {
+        return imagePaths;
     }
 
-    public void setImagePath(String imagePath) {
-        this.imagePath = imagePath;
+    public void setImagePaths(String imagePaths) {
+        this.imagePaths = imagePaths;
     }
 
     public String getStatus() {

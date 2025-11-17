@@ -41,6 +41,14 @@ public class MessageRepository {
     private WebSocketClient webSocketClient;
     private boolean isNetworkAvailable = false;
     private ConnectivityManager.NetworkCallback networkCallback;
+    private NetworkAvailableListener networkAvailableListener;
+    
+    /**
+     * 网络恢复监听器接口
+     */
+    public interface NetworkAvailableListener {
+        void onNetworkAvailable();
+    }
     
     @Inject
     public MessageRepository(
@@ -62,6 +70,13 @@ public class MessageRepository {
     
     public void setWebSocketClient(WebSocketClient client) {
         this.webSocketClient = client;
+    }
+    
+    /**
+     * 设置网络恢复监听器
+     */
+    public void setNetworkAvailableListener(NetworkAvailableListener listener) {
+        this.networkAvailableListener = listener;
     }
     
     /**
@@ -213,11 +228,12 @@ public class MessageRepository {
     
     /**
      * Called when network becomes available
+     * 通知监听器而不是直接连接，避免重复连接
      */
     private void onNetworkAvailable() {
-        if (webSocketClient != null && !webSocketClient.isConnected()) {
-            Log.d(TAG, "Network available, attempting to reconnect WebSocket");
-            webSocketClient.connect();
+        Log.d(TAG, "Network available, notifying listener");
+        if (networkAvailableListener != null) {
+            networkAvailableListener.onNetworkAvailable();
         }
     }
     

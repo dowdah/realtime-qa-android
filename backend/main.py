@@ -86,7 +86,7 @@ class LoginRequest(BaseModel):
 
 class QuestionRequest(BaseModel):
     content: str
-    imagePath: Optional[str] = None
+    imagePaths: Optional[List[str]] = None
 
 
 class MessageRequest(BaseModel):
@@ -315,10 +315,16 @@ async def create_question(
     """创建新问题"""
     try:
         current_time = int(time.time() * 1000)
+        
+        # 将图片路径列表转换为 JSON 字符串存储
+        image_paths_json = None
+        if request.imagePaths:
+            image_paths_json = json.dumps(request.imagePaths)
+        
         new_question = Question(
             user_id=current_user.id,
             content=request.content,
-            image_path=request.imagePath,
+            image_paths=image_paths_json,
             status="pending",
             created_at=current_time,
             updated_at=current_time,

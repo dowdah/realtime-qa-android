@@ -1,15 +1,17 @@
 package com.dowdah.asknow.data.model;
 
+import java.util.List;
+
 public class QuestionRequest {
     private String content;
-    private String imagePath;
+    private List<String> imagePaths;
 
     public QuestionRequest() {
     }
 
-    public QuestionRequest(String content, String imagePath) {
+    public QuestionRequest(String content, List<String> imagePaths) {
         this.content = content;
-        this.imagePath = imagePath;
+        this.imagePaths = imagePaths;
     }
 
     public String getContent() {
@@ -20,12 +22,12 @@ public class QuestionRequest {
         this.content = content;
     }
 
-    public String getImagePath() {
-        return imagePath;
+    public List<String> getImagePaths() {
+        return imagePaths;
     }
 
-    public void setImagePath(String imagePath) {
-        this.imagePath = imagePath;
+    public void setImagePaths(List<String> imagePaths) {
+        this.imagePaths = imagePaths;
     }
 }
 

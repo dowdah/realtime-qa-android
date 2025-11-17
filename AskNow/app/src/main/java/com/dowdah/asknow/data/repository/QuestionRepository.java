@@ -105,7 +105,12 @@ public class QuestionRepository {
                                 entity.setUserId(serverQuestion.getUserId());
                                 entity.setTutorId(serverQuestion.getTutorId());
                                 entity.setContent(serverQuestion.getContent());
-                                entity.setImagePath(serverQuestion.getImagePath());
+                                // 将图片路径列表转换为 JSON 字符串
+                                String imagePathsJson = null;
+                                if (serverQuestion.getImagePaths() != null && !serverQuestion.getImagePaths().isEmpty()) {
+                                    imagePathsJson = new com.google.gson.Gson().toJson(serverQuestion.getImagePaths());
+                                }
+                                entity.setImagePaths(imagePathsJson);
                                 entity.setStatus(serverQuestion.getStatus());
                                 entity.setCreatedAt(serverQuestion.getCreatedAt());
                                 entity.setUpdatedAt(serverQuestion.getUpdatedAt());

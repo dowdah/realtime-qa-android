@@ -53,3 +53,93 @@ google-services.json
 
 *.md
 !README.md
+
+###############################################################
+# Android project (under AskNow/)
+###############################################################
+
+# Baseline Profiles build outputs
+AskNow/**/baselineProfiles/**/baseline-prof*.apk
+AskNow/**/baselineProfiles/**/baseline-prof*.dm
+AskNow/**/baselineProfiles/**/baseline-prof*.zip
+
+# Gradle caches
+AskNow/.gradle/daemon/
+AskNow/.gradle/native/
+AskNow/.gradle/workers/
+AskNow/.gradle/notifications/
+
+# Java / JVM files
+AskNow/**/*.class
+AskNow/**/*.jar
+AskNow/**/*.war
+AskNow/**/*.ear
+AskNow/**/hs_err_pid*
+AskNow/**/replay_pid*
+
+# Android Lint reports
+AskNow/**/lint-results*.xml
+AskNow/**/lint-results*.html
+AskNow/**/lint-results*.txt
+
+# Android test outputs
+AskNow/**/test-results/
+AskNow/**/outputs/
+
+###############################################################
+# Python project (under backend/)
+###############################################################
+
+# Byte-compiled / optimized files
+backend/**/__pycache__/
+backend/**/*.py[cod]
+backend/**/*$py.class
+
+# Virtual environments
+backend/venv/
+backend/.env/
+backend/.venv/
+backend/env/
+backend/ENV/
+
+# Python packaging
+backend/build/
+backend/dist/
+backend/**/*.egg-info/
+backend/.eggs/
+
+# Python test & coverage
+backend/.coverage
+backend/.coverage.*
+backend/.cache
+backend/.pytest_cache/
+backend/htmlcov/
+backend/nose2-junit.xml
+
+# Jupyter notebooks
+backend/**/.ipynb_checkpoints/
+
+# Static analysis / tooling caches
+backend/.mypy_cache/
+backend/.pytype/
+backend/ruff_cache/
+backend/pylint.d/
+
+###############################################################
+# OS files (safe globally)
+###############################################################
+
+# Windows
+Thumbs.db
+ehthumbs.db
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+AskNow/app/release/baselineProfiles/0/app-release.dm
+AskNow/app/release/baselineProfiles/1/app-release.dm

@@ -3,6 +3,7 @@ package com.dowdah.asknow.ui.adapter;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
@@ -10,6 +11,8 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
+import com.dowdah.asknow.BuildConfig;
 import com.dowdah.asknow.R;
 import com.dowdah.asknow.data.local.entity.MessageEntity;
 import com.dowdah.asknow.databinding.ItemMessageReceivedBinding;
@@ -29,13 +32,22 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
     private boolean showLoadingFooter = false;
     private boolean showRetryFooter = false;
     private OnRetryClickListener retryListener;
+    private OnImageClickListener imageClickListener;
     
     public interface OnRetryClickListener {
         void onRetryClick();
     }
     
+    public interface OnImageClickListener {
+        void onImageClick(String imagePath);
+    }
+    
     public MessageAdapter(long currentUserId) {
         this.currentUserId = currentUserId;
+    }
+    
+    public void setImageClickListener(OnImageClickListener listener) {
+        this.imageClickListener = listener;
     }
     
     public void setRetryListener(OnRetryClickListener retryListener) {
@@ -168,9 +180,9 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         } else {
             MessageEntity message = messages.get(position);
             if (holder instanceof SentMessageViewHolder) {
-                ((SentMessageViewHolder) holder).bind(message);
+                ((SentMessageViewHolder) holder).bind(message, imageClickListener);
             } else if (holder instanceof ReceivedMessageViewHolder) {
-                ((ReceivedMessageViewHolder) holder).bind(message);
+                ((ReceivedMessageViewHolder) holder).bind(message, imageClickListener);
             }
         }
     }
@@ -188,12 +200,39 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
             this.binding = binding;
         }
         
-        void bind(MessageEntity message) {
+        void bind(MessageEntity message, OnImageClickListener imageClickListener) {
             if (message == null) {
                 return;
             }
+            
+            String messageType = message.getMessageType();
             String content = message.getContent();
-            binding.tvMessage.setText(content != null ? content : "");
+            
+            if ("image".equals(messageType)) {
+                // 显示图片消息
+                binding.tvMessage.setVisibility(View.GONE);
+                binding.ivMessageImage.setVisibility(View.VISIBLE);
+                
+                String imageUrl = BuildConfig.BASE_URL.replaceAll("/$", "") + content;
+                Glide.with(binding.getRoot().getContext())
+                    .load(imageUrl)
+                    .centerCrop()
+                    .placeholder(R.drawable.ic_image_placeholder)
+                    .error(R.drawable.ic_image_error)
+                    .into(binding.ivMessageImage);
+                
+                // 添加图片点击事件
+                binding.ivMessageImage.setOnClickListener(v -> {
+                    if (imageClickListener != null) {
+                        imageClickListener.onImageClick(content);
+                    }
+                });
+            } else {
+                // 显示文本消息
+                binding.ivMessageImage.setVisibility(View.GONE);
+                binding.tvMessage.setVisibility(View.VISIBLE);
+                binding.tvMessage.setText(content != null ? content : "");
+            }
         }
     }
     
@@ -205,13 +244,39 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
             this.binding = binding;
         }
         
-        void bind(MessageEntity message) {
+        void bind(MessageEntity message, OnImageClickListener imageClickListener) {
             if (message == null) {
                 return;
             }
             
+            String messageType = message.getMessageType();
             String content = message.getContent();
-            binding.tvMessage.setText(content != null ? content : "");
+            
+            if ("image".equals(messageType)) {
+                // 显示图片消息
+                binding.tvMessage.setVisibility(View.GONE);
+                binding.ivMessageImage.setVisibility(View.VISIBLE);
+                
+                String imageUrl = BuildConfig.BASE_URL.replaceAll("/$", "") + content;
+                Glide.with(binding.getRoot().getContext())
+                    .load(imageUrl)
+                    .centerCrop()
+                    .placeholder(R.drawable.ic_image_placeholder)
+                    .error(R.drawable.ic_image_error)
+                    .into(binding.ivMessageImage);
+                
+                // 添加图片点击事件
+                binding.ivMessageImage.setOnClickListener(v -> {
+                    if (imageClickListener != null) {
+                        imageClickListener.onImageClick(content);
+                    }
+                });
+            } else {
+                // 显示文本消息
+                binding.ivMessageImage.setVisibility(View.GONE);
+                binding.tvMessage.setVisibility(View.VISIBLE);
+                binding.tvMessage.setText(content != null ? content : "");
+            }
             
             // 显示未读标记
             View unreadIndicator = binding.getRoot().findViewById(R.id.unread_indicator);

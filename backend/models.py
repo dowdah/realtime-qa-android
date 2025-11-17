@@ -39,7 +39,7 @@ class Question(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)  # 添加索引
     tutor_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)  # 添加索引
     content = Column(Text, nullable=False)
-    image_path = Column(String(500), nullable=True)
+    image_paths = Column(Text, nullable=True)  # 存储 JSON 数组格式的多图片路径
     status = Column(String(20), default="pending", nullable=False, index=True)  # 添加索引
     created_at = Column(BigInteger, nullable=False, index=True)  # 添加索引用于排序
     updated_at = Column(BigInteger, nullable=False, index=True)  # 添加索引用于排序
@@ -71,9 +71,18 @@ class Question(Base):
             "updatedAt": self.updated_at
         }
         if full:
+            # 解析 JSON 数组格式的图片路径
+            import json
+            image_paths_list = []
+            if self.image_paths:
+                try:
+                    image_paths_list = json.loads(self.image_paths)
+                except:
+                    image_paths_list = []
+            
             data.update({
                 "content": self.content,
-                "imagePath": self.image_path,
+                "imagePaths": image_paths_list,
                 "createdAt": self.created_at
             })
         return data
@@ -83,6 +92,15 @@ class Question(Base):
         创建 WebSocket 消息
         message_type: NEW_QUESTION, QUESTION_UPDATED 等
         """
+        # 解析 JSON 数组格式的图片路径
+        import json
+        image_paths_list = []
+        if self.image_paths:
+            try:
+                image_paths_list = json.loads(self.image_paths)
+            except:
+                image_paths_list = []
+        
         return {
             "type": message_type,
             "data": {
@@ -90,7 +108,7 @@ class Question(Base):
                 "userId": self.user_id,
                 "tutorId": self.tutor_id,
                 "content": self.content,
-                "imagePath": self.image_path,
+                "imagePaths": image_paths_list,
                 "status": self.status,
                 "createdAt": self.created_at,
                 "updatedAt": self.updated_at

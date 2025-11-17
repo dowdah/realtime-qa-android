@@ -17,6 +17,7 @@ glide = "4.16.0"
 navigation = "2.7.7"
 lifecycle = "2.8.0"
 ksp = "1.9.23-1.0.20"
+photoview = "2.3.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -59,6 +60,9 @@ navigation-ui = { group = "androidx.navigation", name = "navigation-ui", version
 lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel", version.ref = "lifecycle" }
 lifecycle-livedata = { group = "androidx.lifecycle", name = "lifecycle-livedata", version.ref = "lifecycle" }
 lifecycle-runtime = { group = "androidx.lifecycle", name = "lifecycle-runtime", version.ref = "lifecycle" }
+
+# PhotoView - 流畅的图片缩放库
+photoview = { group = "com.github.chrisbanes", name = "PhotoView", version.ref = "photoview" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

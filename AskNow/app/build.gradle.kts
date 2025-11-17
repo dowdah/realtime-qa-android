@@ -27,7 +27,7 @@ android {
         release {
             isMinifyEnabled = false
             // 生产环境使用实际服务器地址
-            buildConfigField("String", "BASE_URL", "\"https://your-server.com/\"")
+            buildConfigField("String", "BASE_URL", "\"https://dev.dowdah.com/\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -80,6 +80,9 @@ dependencies {
     // Glide
     implementation(libs.glide)
     ksp(libs.glide.compiler)
+    
+    // PhotoView - 流畅的图片缩放库
+    implementation(libs.photoview)
     
     // Navigation
     implementation(libs.navigation.fragment)

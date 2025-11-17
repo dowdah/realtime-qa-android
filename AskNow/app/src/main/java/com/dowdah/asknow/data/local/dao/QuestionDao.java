@@ -46,6 +46,9 @@ public interface QuestionDao {
     @Query("UPDATE questions SET status = :status WHERE id = :id")
     void updateQuestionStatus(long id, String status);
     
+    @Query("UPDATE questions SET updatedAt = :updatedAt WHERE id = :id")
+    void updateUpdatedAt(long id, long updatedAt);
+    
     @Query("DELETE FROM questions WHERE id = :id")
     void deleteQuestion(long id);
     

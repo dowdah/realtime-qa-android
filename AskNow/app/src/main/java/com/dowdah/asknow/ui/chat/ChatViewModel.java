@@ -220,6 +220,105 @@ public class ChatViewModel extends AndroidViewModel {
         });
     }
     
+    /**
+     * 发送图片消息
+     * @param questionId 问题 ID
+     * @param imagePath 图片路径（服务器路径，已上传）
+     */
+    public void sendImageMessage(long questionId, String imagePath) {
+        // 防抖：避免重复发送
+        if (isSendingMessage) {
+            Log.w(TAG, "Message is already being sent, ignoring duplicate request");
+            return;
+        }
+        isSendingMessage = true;
+        
+        // 使用AtomicLong生成唯一的临时ID（负数避免与真实ID冲突）
+        final long tempId = tempIdGenerator.decrementAndGet();
+        long currentUserId = prefsManager.getUserId();
+        long currentTime = System.currentTimeMillis();
+        
+        // 1. 乐观更新：立即插入本地数据库，状态为 pending
+        executor.execute(() -> {
+            synchronized (messageLock) {
+                MessageEntity tempEntity = new MessageEntity(
+                    questionId,
+                    currentUserId,
+                    imagePath,
+                    "image",
+                    currentTime
+                );
+                tempEntity.setId(tempId);
+                tempEntity.setSendStatus(MessageStatus.PENDING);
+                tempEntity.setRead(true); // 自己发送的消息标记为已读
+                messageDao.insert(tempEntity);
+                Log.d(TAG, "Optimistic update: inserted temp image message with id=" + tempId);
+            }
+        });
+        
+        // 2. 发送 HTTP API
+        String token = "Bearer " + prefsManager.getToken();
+        MessageRequest request = new MessageRequest(questionId, imagePath, "image");
+        
+        apiService.sendMessage(token, request).enqueue(new Callback<MessageResponse>() {
+            @Override
+            public void onResponse(Call<MessageResponse> call, Response<MessageResponse> response) {
+                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                    MessageResponse.MessageData data = response.body().getData();
+                    
+                    // 3. 替换临时消息为真实消息
+                    executor.execute(() -> {
+                        synchronized (messageLock) {
+                            messageDao.deleteById(tempId);
+                            
+                            MessageEntity realEntity = new MessageEntity(
+                                data.getQuestionId(),
+                                data.getSenderId(),
+                                data.getContent(),
+                                data.getMessageType(),
+                                data.getCreatedAt()
+                            );
+                            realEntity.setId(data.getId());
+                            realEntity.setSendStatus(MessageStatus.SENT);
+                            realEntity.setRead(data.isRead());
+                            messageDao.insert(realEntity);
+                            Log.d(TAG, "Image message sent: real id=" + data.getId());
+                        }
+                    });
+                    
+                    isSendingMessage = false;
+                    messageSent.postValue(true);
+                    
+                    // 4. 更新问题的 updatedAt
+                    executor.execute(() -> questionDao.updateUpdatedAt(questionId, data.getCreatedAt()));
+                } else {
+                    // 5. 标记失败
+                    executor.execute(() -> {
+                        synchronized (messageLock) {
+                            messageDao.updateSendStatus(tempId, MessageStatus.FAILED);
+                            Log.e(TAG, "Image message send failed: marked temp id=" + tempId + " as failed");
+                        }
+                    });
+                    isSendingMessage = false;
+                    errorMessage.postValue(getApplication().getString(R.string.failed_to_send_message));
+                }
+            }
+            
+            @Override
+            public void onFailure(Call<MessageResponse> call, Throwable t) {
+                // 5. 标记失败
+                executor.execute(() -> {
+                    synchronized (messageLock) {
+                        messageDao.updateSendStatus(tempId, MessageStatus.FAILED);
+                        Log.e(TAG, "Image message send error: marked temp id=" + tempId + " as failed", t);
+                    }
+                });
+                isSendingMessage = false;
+                errorMessage.postValue(getApplication().getString(R.string.network_error, t.getMessage()));
+            }
+        });
+    }
+    
     public void acceptQuestion(long questionId) {
         // 防抖：避免重复接受
         if (isAcceptingQuestion) {

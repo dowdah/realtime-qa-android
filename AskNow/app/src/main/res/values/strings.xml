@@ -93,4 +93,10 @@
     <string name="mark_as_read">Mark as read</string>
     <string name="all_messages_read">All messages read</string>
     <string name="no_question_exists">Nothing here</string>
+    
+    <!-- Image -->
+    <string name="image_preview">Image preview</string>
+    <string name="remove_image">Remove image</string>
+    <string name="select_image">Select image</string>
+    <string name="max_images_reached">Maximum %d images allowed</string>
 </resources>

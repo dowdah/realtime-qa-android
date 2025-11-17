@@ -58,6 +58,17 @@ public class WebSocketManager {
         this.messageDao = messageDao;
         this.prefsManager = prefsManager;
         this.executor = Executors.newSingleThreadExecutor();
+        
+        // 设置网络恢复监听器，统一由 WebSocketManager 处理重连
+        messageRepository.setNetworkAvailableListener(() -> {
+            Log.d(TAG, "Network available, checking WebSocket connection");
+            if (webSocketClient == null || !webSocketClient.isConnected()) {
+                Log.d(TAG, "WebSocket not connected, attempting reconnect");
+                reconnect();
+            } else {
+                Log.d(TAG, "WebSocket already connected, no action needed");
+            }
+        });
     }
     
     public void connect() {

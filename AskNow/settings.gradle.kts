@@ -16,6 +16,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // JitPack - 用于 PhotoView 等开源库
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

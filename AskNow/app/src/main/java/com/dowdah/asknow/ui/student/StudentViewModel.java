@@ -100,9 +100,9 @@ public class StudentViewModel extends AndroidViewModel {
         return questionDao.getQuestionsByUserId(userId);
     }
     
-    public void createQuestion(String content, String imagePath) {
+    public void createQuestion(String content, List<String> imagePaths) {
         String token = "Bearer " + prefsManager.getToken();
-        QuestionRequest request = new QuestionRequest(content, imagePath);
+        QuestionRequest request = new QuestionRequest(content, imagePaths);
         
         apiService.createQuestion(token, request).enqueue(new Callback<QuestionResponse>() {
             @Override
@@ -112,11 +112,17 @@ public class StudentViewModel extends AndroidViewModel {
                     
                     // Save to local database
                     executor.execute(() -> {
+                        // 将图片路径列表转换为 JSON 字符串
+                        String imagePathsJson = null;
+                        if (data.getImagePaths() != null && !data.getImagePaths().isEmpty()) {
+                            imagePathsJson = new com.google.gson.Gson().toJson(data.getImagePaths());
+                        }
+                        
                         QuestionEntity entity = new QuestionEntity(
                             data.getUserId(),
                             null, // tutorId
                             data.getContent(),
-                            data.getImagePath(),
+                            imagePathsJson,
                             data.getStatus(),
                             data.getCreatedAt(),
                             data.getCreatedAt() // updatedAt

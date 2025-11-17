@@ -113,8 +113,8 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
                    (oldQuestion.getTutorId() == null ? newQuestion.getTutorId() == null : 
                     oldQuestion.getTutorId().equals(newQuestion.getTutorId())) &&
                    oldQuestion.getContent().equals(newQuestion.getContent()) &&
-                   (oldQuestion.getImagePath() == null ? newQuestion.getImagePath() == null : 
-                    oldQuestion.getImagePath().equals(newQuestion.getImagePath())) &&
+                   (oldQuestion.getImagePaths() == null ? newQuestion.getImagePaths() == null : 
+                    oldQuestion.getImagePaths().equals(newQuestion.getImagePaths())) &&
                    oldQuestion.getStatus().equals(newQuestion.getStatus()) &&
                    oldQuestion.getCreatedAt() == newQuestion.getCreatedAt() &&
                    oldQuestion.getUpdatedAt() == newQuestion.getUpdatedAt();
