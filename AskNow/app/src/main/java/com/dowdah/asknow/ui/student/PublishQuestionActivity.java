@@ -23,6 +23,7 @@ import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.model.UploadResponse;
 import com.dowdah.asknow.databinding.ActivityPublishQuestionBinding;
 import com.dowdah.asknow.utils.SharedPreferencesManager;
+import com.dowdah.asknow.utils.ValidationUtils;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.io.File;
@@ -146,11 +147,30 @@ public class PublishQuestionActivity extends AppCompatActivity {
     private void submitQuestion() {
         String content = binding.etContent.getText().toString().trim();
         
-        if (content.isEmpty()) {
-            Toast.makeText(this, R.string.please_enter_question_content, Toast.LENGTH_SHORT).show();
+        // 清除之前的错误
+        binding.tilContent.setError(null);
+        
+        // 验证内容
+        if (!ValidationUtils.isNotNullOrEmpty(content)) {
+            binding.tilContent.setError(getString(R.string.please_enter_question_content));
+            binding.etContent.requestFocus();
             return;
         }
         
+        // 验证内容长度（至少10个字符，最多1000个字符）
+        if (content.length() < 10) {
+            binding.tilContent.setError(getString(R.string.error_question_too_short));
+            binding.etContent.requestFocus();
+            return;
+        }
+        
+        if (content.length() > 1000) {
+            binding.tilContent.setError(getString(R.string.error_question_too_long));
+            binding.etContent.requestFocus();
+            return;
+        }
+        
+        // 禁用提交按钮，显示进度条
         binding.btnSubmit.setEnabled(false);
         binding.progressBar.setVisibility(android.view.View.VISIBLE);
         
@@ -162,20 +182,25 @@ public class PublishQuestionActivity extends AppCompatActivity {
     }
     
     private void uploadImageThenSubmit(String content) {
-        try {
-            File file = new File(getCacheDir(), "temp_image.jpg");
-            InputStream inputStream = getContentResolver().openInputStream(selectedImageUri);
-            FileOutputStream outputStream = new FileOutputStream(file);
+        File file = new File(getCacheDir(), "temp_image.jpg");
+        
+        // 使用try-with-resources自动关闭资源，防止内存泄漏
+        try (InputStream inputStream = getContentResolver().openInputStream(selectedImageUri);
+             FileOutputStream outputStream = new FileOutputStream(file)) {
             
-            byte[] buffer = new byte[1024];
+            if (inputStream == null) {
+                resetSubmitState();
+                Toast.makeText(this, R.string.error_reading_image, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            byte[] buffer = new byte[4096]; // 增大缓冲区以提高性能
             int length;
             while ((length = inputStream.read(buffer)) > 0) {
                 outputStream.write(buffer, 0, length);
             }
             
-            inputStream.close();
-            outputStream.close();
-            
+            // 创建上传请求
             RequestBody requestBody = RequestBody.create(file, MediaType.parse("image/*"));
             MultipartBody.Part imagePart = MultipartBody.Part.createFormData("image", file.getName(), requestBody);
             
@@ -187,23 +212,54 @@ public class PublishQuestionActivity extends AppCompatActivity {
                         uploadedImagePath = response.body().getImagePath();
                         submitQuestionToServer(content, uploadedImagePath);
                     } else {
-                        binding.btnSubmit.setEnabled(true);
-                        binding.progressBar.setVisibility(android.view.View.GONE);
-                        Toast.makeText(PublishQuestionActivity.this, R.string.failed_to_upload_image, Toast.LENGTH_SHORT).show();
+                        resetSubmitState();
+                        String errorMsg = response.body() != null && response.body().getMessage() != null ?
+                            response.body().getMessage() : getString(R.string.failed_to_upload_image);
+                        Toast.makeText(PublishQuestionActivity.this, errorMsg, Toast.LENGTH_LONG).show();
+                    }
+                    
+                    // 清理临时文件
+                    if (file.exists()) {
+                        file.delete();
                     }
                 }
                 
                 @Override
                 public void onFailure(Call<UploadResponse> call, Throwable t) {
-                    binding.btnSubmit.setEnabled(true);
-                    binding.progressBar.setVisibility(android.view.View.GONE);
-                    Toast.makeText(PublishQuestionActivity.this, getString(R.string.upload_error, t.getMessage()), Toast.LENGTH_SHORT).show();
+                    resetSubmitState();
+                    String errorMsg = t.getMessage() != null ? 
+                        getString(R.string.upload_error, t.getMessage()) : 
+                        getString(R.string.failed_to_upload_image);
+                    Toast.makeText(PublishQuestionActivity.this, errorMsg, Toast.LENGTH_LONG).show();
+                    
+                    // 清理临时文件
+                    if (file.exists()) {
+                        file.delete();
+                    }
                 }
             });
+            
         } catch (Exception e) {
+            resetSubmitState();
+            String errorMsg = e.getMessage() != null ? 
+                getString(R.string.error_message, e.getMessage()) : 
+                getString(R.string.error_reading_image);
+            Toast.makeText(this, errorMsg, Toast.LENGTH_LONG).show();
+            
+            // 清理临时文件
+            if (file.exists()) {
+                file.delete();
+            }
+        }
+    }
+    
+    /**
+     * 重置提交状态（启用按钮，隐藏进度条）
+     */
+    private void resetSubmitState() {
+        if (binding != null) {
             binding.btnSubmit.setEnabled(true);
             binding.progressBar.setVisibility(android.view.View.GONE);
-            Toast.makeText(this, getString(R.string.error_message, e.getMessage()), Toast.LENGTH_SHORT).show();
         }
     }
     

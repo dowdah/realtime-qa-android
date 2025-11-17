@@ -9,6 +9,7 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.dowdah.asknow.R;
+import com.dowdah.asknow.constants.WebSocketMessageType;
 import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
@@ -53,6 +54,9 @@ public class StudentViewModel extends AndroidViewModel {
     private final MutableLiveData<Boolean> isLoadingMore = new MutableLiveData<>(false);
     private final MutableLiveData<Boolean> hasMoreData = new MutableLiveData<>(true);
     
+    // WebSocket message observer for cleanup
+    private final androidx.lifecycle.Observer<WebSocketMessage> webSocketMessageObserver;
+    
     @Inject
     public StudentViewModel(
         @NonNull Application application,
@@ -72,20 +76,23 @@ public class StudentViewModel extends AndroidViewModel {
         this.webSocketManager = webSocketManager;
         this.executor = Executors.newSingleThreadExecutor();
         
+        // Create observer instance for proper cleanup
+        this.webSocketMessageObserver = message -> {
+            if (message != null) {
+                String type = message.getType();
+                if (WebSocketMessageType.NEW_ANSWER.equals(type)) {
+                    // 向后兼容
+                    newAnswer.postValue(message);
+                }
+            }
+        };
+        
         observeWebSocketMessages();
     }
     
     private void observeWebSocketMessages() {
         // Observe WebSocket messages for student-specific handling
-        webSocketManager.getIncomingMessage().observeForever(message -> {
-            if (message != null) {
-                String type = message.getType();
-                if ("NEW_ANSWER".equals(type)) {
-                    // 向后兼容
-                    newAnswer.postValue(message);
-                }
-            }
-        });
+        webSocketManager.getIncomingMessage().observeForever(webSocketMessageObserver);
     }
     
     public LiveData<List<QuestionEntity>> getMyQuestions() {
@@ -235,8 +242,16 @@ public class StudentViewModel extends AndroidViewModel {
     @Override
     protected void onCleared() {
         super.onCleared();
+        
+        // Remove WebSocket observer to prevent memory leak
+        if (webSocketMessageObserver != null) {
+            webSocketManager.getIncomingMessage().removeObserver(webSocketMessageObserver);
+        }
+        
         // Don't disconnect WebSocket - it should stay connected at app level
-        executor.shutdown();
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdown();
+        }
     }
 }
 

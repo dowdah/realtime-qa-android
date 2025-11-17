@@ -5,6 +5,8 @@ import android.util.Log;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
+import com.dowdah.asknow.constants.QuestionStatus;
+import com.dowdah.asknow.constants.WebSocketMessageType;
 import com.dowdah.asknow.data.api.WebSocketClient;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
@@ -123,25 +125,25 @@ public class WebSocketManager {
     private void handleMessage(WebSocketMessage message, String role) {
         String type = message.getType();
         
-        if ("ACK".equals(type)) {
+        if (WebSocketMessageType.ACK.equals(type)) {
             String messageId = message.getMessageId();
             if (messageId != null) {
                 messageRepository.onMessageAcknowledged(messageId);
             }
-        } else if ("CHAT_MESSAGE".equals(type)) {
+        } else if (WebSocketMessageType.CHAT_MESSAGE.equals(type)) {
             handleChatMessage(message);
-        } else if ("QUESTION_UPDATED".equals(type)) {
+        } else if (WebSocketMessageType.QUESTION_UPDATED.equals(type)) {
             // 新的统一的问题更新消息类型（替代 QUESTION_ACCEPTED 和 QUESTION_CLOSED）
             handleQuestionUpdated(message);
-        } else if ("QUESTION_ACCEPTED".equals(type)) {
+        } else if (WebSocketMessageType.QUESTION_ACCEPTED.equals(type)) {
             // 向后兼容
             handleQuestionAccepted(message);
-        } else if ("QUESTION_CLOSED".equals(type)) {
+        } else if (WebSocketMessageType.QUESTION_CLOSED.equals(type)) {
             // 向后兼容
             handleQuestionClosed(message);
-        } else if ("NEW_QUESTION".equals(type) && "tutor".equals(role)) {
+        } else if (WebSocketMessageType.NEW_QUESTION.equals(type) && "tutor".equals(role)) {
             handleNewQuestion(message);
-        } else if ("NEW_ANSWER".equals(type) && "student".equals(role)) {
+        } else if (WebSocketMessageType.NEW_ANSWER.equals(type) && "student".equals(role)) {
             // 向后兼容
         }
     }
@@ -149,7 +151,16 @@ public class WebSocketManager {
     private void handleChatMessage(WebSocketMessage message) {
         executor.execute(() -> {
             try {
+                if (message == null) {
+                    Log.w(TAG, "Received null message");
+                    return;
+                }
+                
                 JsonObject data = message.getData();
+                if (data == null) {
+                    Log.w(TAG, "Message data is null");
+                    return;
+                }
                 
                 // 处理两种消息格式：
                 // 1. 后端发送的格式：data.id
@@ -161,6 +172,20 @@ public class WebSocketManager {
                     messageId = data.get("messageId").getAsLong();
                 } else {
                     Log.w(TAG, "Message missing both id and messageId fields");
+                    return;
+                }
+                
+                // 验证必要字段
+                if (!data.has("questionId") || data.get("questionId").isJsonNull()) {
+                    Log.w(TAG, "Message missing questionId field");
+                    return;
+                }
+                if (!data.has("senderId") || data.get("senderId").isJsonNull()) {
+                    Log.w(TAG, "Message missing senderId field");
+                    return;
+                }
+                if (!data.has("content") || data.get("content").isJsonNull()) {
+                    Log.w(TAG, "Message missing content field");
                     return;
                 }
                 
@@ -210,7 +235,35 @@ public class WebSocketManager {
     private void handleQuestionUpdated(WebSocketMessage message) {
         executor.execute(() -> {
             try {
+                if (message == null) {
+                    Log.w(TAG, "Received null message");
+                    return;
+                }
+                
                 JsonObject data = message.getData();
+                if (data == null) {
+                    Log.w(TAG, "Message data is null");
+                    return;
+                }
+                
+                // 验证必要字段
+                if (!data.has("questionId") || data.get("questionId").isJsonNull()) {
+                    Log.w(TAG, "Question update missing questionId field");
+                    return;
+                }
+                if (!data.has("userId") || data.get("userId").isJsonNull()) {
+                    Log.w(TAG, "Question update missing userId field");
+                    return;
+                }
+                if (!data.has("content") || data.get("content").isJsonNull()) {
+                    Log.w(TAG, "Question update missing content field");
+                    return;
+                }
+                if (!data.has("status") || data.get("status").isJsonNull()) {
+                    Log.w(TAG, "Question update missing status field");
+                    return;
+                }
+                
                 long questionId = data.get("questionId").getAsLong();
                 long userId = data.get("userId").getAsLong();
                 Long tutorId = data.has("tutorId") && !data.get("tutorId").isJsonNull() 
@@ -219,8 +272,10 @@ public class WebSocketManager {
                 String imagePath = data.has("imagePath") && !data.get("imagePath").isJsonNull() 
                     ? data.get("imagePath").getAsString() : null;
                 String status = data.get("status").getAsString();
-                long createdAt = data.get("createdAt").getAsLong();
-                long updatedAt = data.get("updatedAt").getAsLong();
+                long createdAt = data.has("createdAt") && !data.get("createdAt").isJsonNull()
+                    ? data.get("createdAt").getAsLong() : System.currentTimeMillis();
+                long updatedAt = data.has("updatedAt") && !data.get("updatedAt").isJsonNull()
+                    ? data.get("updatedAt").getAsLong() : System.currentTimeMillis();
                 
                 // 使用 INSERT OR REPLACE 策略确保 LiveData 被触发
                 QuestionEntity entity = new QuestionEntity(
@@ -244,47 +299,56 @@ public class WebSocketManager {
     }
     
     private void handleQuestionAccepted(WebSocketMessage message) {
-        executor.execute(() -> {
-            try {
-                JsonObject data = message.getData();
-                long questionId = data.get("questionId").getAsLong();
-                long tutorId = data.get("tutorId").getAsLong();
-                
-                QuestionEntity question = questionDao.getQuestionById(questionId);
-                if (question != null) {
-                    question.setStatus("in_progress");
-                    question.setTutorId(tutorId);
-                    question.setUpdatedAt(System.currentTimeMillis());
-                    // 使用 update 而不是 insert，避免触发外键级联删除导致消息丢失
-                    questionDao.update(question);
-                    Log.d(TAG, "Updated question status to in_progress via QUESTION_ACCEPTED");
-                } else {
-                    Log.w(TAG, "Question not found in database for QUESTION_ACCEPTED: " + questionId);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error handling question accepted", e);
-            }
-        });
+        updateQuestionStatus(message, QuestionStatus.IN_PROGRESS, true, "QUESTION_ACCEPTED");
     }
     
     private void handleQuestionClosed(WebSocketMessage message) {
+        updateQuestionStatus(message, QuestionStatus.CLOSED, false, "QUESTION_CLOSED");
+    }
+    
+    /**
+     * 统一处理问题状态更新
+     * 
+     * @param message WebSocket消息
+     * @param newStatus 新状态
+     * @param updateTutor 是否更新tutorId
+     * @param messageType 消息类型（用于日志）
+     */
+    private void updateQuestionStatus(WebSocketMessage message, String newStatus, boolean updateTutor, String messageType) {
         executor.execute(() -> {
             try {
-                JsonObject data = message.getData();
-                long questionId = data.get("questionId").getAsLong();
+                if (message == null || message.getData() == null) {
+                    Log.w(TAG, "Invalid message for " + messageType);
+                    return;
+                }
                 
+                JsonObject data = message.getData();
+                if (!data.has("questionId") || data.get("questionId").isJsonNull()) {
+                    Log.w(TAG, messageType + " missing questionId");
+                    return;
+                }
+                
+                long questionId = data.get("questionId").getAsLong();
                 QuestionEntity question = questionDao.getQuestionById(questionId);
+                
                 if (question != null) {
-                    question.setStatus("closed");
+                    question.setStatus(newStatus);
                     question.setUpdatedAt(System.currentTimeMillis());
+                    
+                    // 如果需要更新tutorId
+                    if (updateTutor && data.has("tutorId") && !data.get("tutorId").isJsonNull()) {
+                        long tutorId = data.get("tutorId").getAsLong();
+                        question.setTutorId(tutorId);
+                    }
+                    
                     // 使用 update 而不是 insert，避免触发外键级联删除导致消息丢失
                     questionDao.update(question);
-                    Log.d(TAG, "Updated question status to closed via QUESTION_CLOSED");
+                    Log.d(TAG, "Updated question " + questionId + " status to " + newStatus + " via " + messageType);
                 } else {
-                    Log.w(TAG, "Question not found in database for QUESTION_CLOSED: " + questionId);
+                    Log.w(TAG, "Question not found in database for " + messageType + ": " + questionId);
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error handling question closed", e);
+                Log.e(TAG, "Error handling " + messageType, e);
             }
         });
     }
@@ -346,7 +410,10 @@ public class WebSocketManager {
     
     public void cleanup() {
         disconnect();
-        executor.shutdown();
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdown();
+            Log.d(TAG, "Executor shutdown");
+        }
     }
 }
 

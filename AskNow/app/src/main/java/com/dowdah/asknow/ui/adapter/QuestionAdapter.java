@@ -9,9 +9,11 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.dowdah.asknow.R;
+import com.dowdah.asknow.constants.QuestionStatus;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
 
@@ -20,6 +22,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     
@@ -33,6 +37,9 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
     private OnRetryClickListener retryListener;
     private MessageDao messageDao;
     private long currentUserId;
+    
+    // Shared executor for all unread count queries
+    private static final ExecutorService sharedExecutor = Executors.newFixedThreadPool(4);
     
     public interface OnQuestionClickListener {
         void onQuestionClick(QuestionEntity question);
@@ -56,9 +63,62 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
         this.retryListener = retryListener;
     }
     
-    public void setQuestions(List<QuestionEntity> questions) {
-        this.questions = questions;
-        notifyDataSetChanged();
+    public void setQuestions(List<QuestionEntity> newQuestions) {
+        if (newQuestions == null) {
+            newQuestions = new ArrayList<>();
+        }
+        
+        DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(new QuestionDiffCallback(this.questions, newQuestions));
+        this.questions = new ArrayList<>(newQuestions);
+        diffResult.dispatchUpdatesTo(this);
+    }
+    
+    /**
+     * DiffUtil Callback for efficient list updates
+     */
+    private static class QuestionDiffCallback extends DiffUtil.Callback {
+        private final List<QuestionEntity> oldList;
+        private final List<QuestionEntity> newList;
+        
+        public QuestionDiffCallback(List<QuestionEntity> oldList, List<QuestionEntity> newList) {
+            this.oldList = oldList;
+            this.newList = newList;
+        }
+        
+        @Override
+        public int getOldListSize() {
+            return oldList != null ? oldList.size() : 0;
+        }
+        
+        @Override
+        public int getNewListSize() {
+            return newList != null ? newList.size() : 0;
+        }
+        
+        @Override
+        public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
+            QuestionEntity oldQuestion = oldList.get(oldItemPosition);
+            QuestionEntity newQuestion = newList.get(newItemPosition);
+            return oldQuestion.getId() == newQuestion.getId();
+        }
+        
+        @Override
+        public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
+            QuestionEntity oldQuestion = oldList.get(oldItemPosition);
+            QuestionEntity newQuestion = newList.get(newItemPosition);
+            
+            // 比较所有相关字段
+            return oldQuestion.getId() == newQuestion.getId() &&
+                   oldQuestion.getUserId() == newQuestion.getUserId() &&
+                   (oldQuestion.getTutorId() == null ? newQuestion.getTutorId() == null : 
+                    oldQuestion.getTutorId().equals(newQuestion.getTutorId())) &&
+                   oldQuestion.getContent().equals(newQuestion.getContent()) &&
+                   (oldQuestion.getImagePath() == null ? newQuestion.getImagePath() == null : 
+                    oldQuestion.getImagePath().equals(newQuestion.getImagePath())) &&
+                   oldQuestion.getStatus().equals(newQuestion.getStatus()) &&
+                   oldQuestion.getCreatedAt() == newQuestion.getCreatedAt() &&
+                   oldQuestion.getUpdatedAt() == newQuestion.getUpdatedAt();
+        }
     }
     
     /**
@@ -150,15 +210,22 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
         }
         
         public void bind(QuestionEntity question, OnQuestionClickListener listener, MessageDao messageDao, long currentUserId) {
-            tvContent.setText(question.getContent());
-            tvStatus.setText(getStatusText(question.getStatus()));
+            if (question == null) {
+                return;
+            }
+            
+            String content = question.getContent();
+            tvContent.setText(content != null ? content : "");
+            
+            String status = question.getStatus();
+            tvStatus.setText(getStatusText(status != null ? status : "pending"));
             
             SimpleDateFormat sdf = new SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault());
             tvDate.setText(sdf.format(new Date(question.getCreatedAt())));
             
             // 显示未读消息数量
             if (messageDao != null && currentUserId > 0) {
-                new Thread(() -> {
+                sharedExecutor.execute(() -> {
                     int unreadCount = messageDao.getUnreadMessageCount(question.getId(), currentUserId);
                     new Handler(Looper.getMainLooper()).post(() -> {
                         if (unreadCount > 0) {
@@ -168,21 +235,23 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
                             tvUnreadBadge.setVisibility(View.GONE);
                         }
                     });
-                }).start();
+                });
             } else {
                 tvUnreadBadge.setVisibility(View.GONE);
             }
             
-            itemView.setOnClickListener(v -> listener.onQuestionClick(question));
+            if (listener != null) {
+                itemView.setOnClickListener(v -> listener.onQuestionClick(question));
+            }
         }
         
         private String getStatusText(String status) {
             switch (status) {
-                case "pending":
+                case QuestionStatus.PENDING:
                     return itemView.getContext().getString(R.string.status_pending);
-                case "in_progress":
+                case QuestionStatus.IN_PROGRESS:
                     return itemView.getContext().getString(R.string.status_in_progress);
-                case "closed":
+                case QuestionStatus.CLOSED:
                     return itemView.getContext().getString(R.string.status_closed);
                 default:
                     return status;

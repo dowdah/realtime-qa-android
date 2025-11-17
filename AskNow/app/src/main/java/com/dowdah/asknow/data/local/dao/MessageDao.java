@@ -5,6 +5,7 @@ import androidx.room.Dao;
 import androidx.room.Insert;
 import androidx.room.OnConflictStrategy;
 import androidx.room.Query;
+import androidx.room.Transaction;
 import androidx.room.Update;
 
 import com.dowdah.asknow.data.local.entity.MessageEntity;
@@ -44,6 +45,7 @@ public interface MessageDao {
     @Query("SELECT COUNT(*) FROM messages WHERE questionId = :questionId AND isRead = 0 AND senderId != :currentUserId")
     LiveData<Integer> getUnreadMessageCountLive(long questionId, long currentUserId);
     
+    @Transaction
     @Query("UPDATE messages SET isRead = 1 WHERE questionId = :questionId AND senderId != :currentUserId")
     void markMessagesAsRead(long questionId, long currentUserId);
     

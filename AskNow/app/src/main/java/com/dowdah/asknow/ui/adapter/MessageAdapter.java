@@ -7,6 +7,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.dowdah.asknow.R;
@@ -41,9 +42,60 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         this.retryListener = retryListener;
     }
     
-    public void setMessages(List<MessageEntity> messages) {
-        this.messages = messages;
-        notifyDataSetChanged();
+    public void setMessages(List<MessageEntity> newMessages) {
+        if (newMessages == null) {
+            newMessages = new ArrayList<>();
+        }
+        
+        DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(new MessageDiffCallback(this.messages, newMessages));
+        this.messages = new ArrayList<>(newMessages);
+        diffResult.dispatchUpdatesTo(this);
+    }
+    
+    /**
+     * DiffUtil Callback for efficient list updates
+     */
+    private static class MessageDiffCallback extends DiffUtil.Callback {
+        private final List<MessageEntity> oldList;
+        private final List<MessageEntity> newList;
+        
+        public MessageDiffCallback(List<MessageEntity> oldList, List<MessageEntity> newList) {
+            this.oldList = oldList;
+            this.newList = newList;
+        }
+        
+        @Override
+        public int getOldListSize() {
+            return oldList != null ? oldList.size() : 0;
+        }
+        
+        @Override
+        public int getNewListSize() {
+            return newList != null ? newList.size() : 0;
+        }
+        
+        @Override
+        public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
+            MessageEntity oldMessage = oldList.get(oldItemPosition);
+            MessageEntity newMessage = newList.get(newItemPosition);
+            return oldMessage.getId() == newMessage.getId();
+        }
+        
+        @Override
+        public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
+            MessageEntity oldMessage = oldList.get(oldItemPosition);
+            MessageEntity newMessage = newList.get(newItemPosition);
+            
+            // 比较所有相关字段
+            return oldMessage.getId() == newMessage.getId() &&
+                   oldMessage.getQuestionId() == newMessage.getQuestionId() &&
+                   oldMessage.getSenderId() == newMessage.getSenderId() &&
+                   oldMessage.getContent().equals(newMessage.getContent()) &&
+                   oldMessage.getMessageType().equals(newMessage.getMessageType()) &&
+                   oldMessage.isRead() == newMessage.isRead() &&
+                   (oldMessage.getSendStatus() == null ? newMessage.getSendStatus() == null : 
+                    oldMessage.getSendStatus().equals(newMessage.getSendStatus()));
+        }
     }
     
     public void showLoadingFooter() {
@@ -137,7 +189,11 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         }
         
         void bind(MessageEntity message) {
-            binding.tvMessage.setText(message.getContent());
+            if (message == null) {
+                return;
+            }
+            String content = message.getContent();
+            binding.tvMessage.setText(content != null ? content : "");
         }
     }
     
@@ -150,7 +206,12 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         }
         
         void bind(MessageEntity message) {
-            binding.tvMessage.setText(message.getContent());
+            if (message == null) {
+                return;
+            }
+            
+            String content = message.getContent();
+            binding.tvMessage.setText(content != null ? content : "");
             
             // 显示未读标记
             View unreadIndicator = binding.getRoot().findViewById(R.id.unread_indicator);

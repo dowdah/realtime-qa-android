@@ -50,6 +50,16 @@
     <string name="failed_to_accept_question">Failed to accept question</string>
     <string name="failed_to_close_question">Failed to close question</string>
     
+    <!-- Validation Error Messages -->
+    <string name="error_username_empty">Username cannot be empty</string>
+    <string name="error_username_invalid">Username must be 3-20 characters and contain only letters, numbers, and underscores</string>
+    <string name="error_password_empty">Password cannot be empty</string>
+    <string name="error_password_too_short">Password must be at least 6 characters</string>
+    <string name="error_confirm_password_empty">Please confirm your password</string>
+    <string name="error_question_too_short">Question must be at least 10 characters</string>
+    <string name="error_question_too_long">Question must be less than 1000 characters</string>
+    <string name="error_reading_image">Failed to read image</string>
+    
     <!-- Status Messages -->
     <string name="connected_to_server">Connected to server</string>
     <string name="question_submitted">Question submitted!</string>

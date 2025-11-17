@@ -67,6 +67,14 @@ public class PendingQuestionsFragment extends Fragment {
         binding.recyclerView.setLayoutManager(layoutManager);
         binding.recyclerView.setAdapter(adapter);
         
+        // 性能优化：RecyclerView大小固定，避免重新计算
+        binding.recyclerView.setHasFixedSize(true);
+        
+        // 性能优化：减少item变化动画，提高流畅度
+        if (binding.recyclerView.getItemAnimator() != null) {
+            binding.recyclerView.getItemAnimator().setChangeDuration(0);
+        }
+        
         // 设置重试监听
         adapter.setRetryListener(() -> {
             viewModel.loadMoreQuestions();

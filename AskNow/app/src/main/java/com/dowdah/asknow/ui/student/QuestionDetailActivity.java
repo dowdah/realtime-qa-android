@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.bumptech.glide.Glide;
 import com.dowdah.asknow.R;
+import com.dowdah.asknow.constants.QuestionStatus;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
@@ -17,6 +18,9 @@ import com.dowdah.asknow.databinding.ActivityQuestionDetailBinding;
 import com.dowdah.asknow.ui.adapter.MessageAdapter;
 import com.dowdah.asknow.ui.chat.ChatViewModel;
 import com.dowdah.asknow.utils.SharedPreferencesManager;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.inject.Inject;
 
@@ -30,6 +34,7 @@ public class QuestionDetailActivity extends AppCompatActivity {
     private MessageAdapter messageAdapter;
     private long questionId;
     private long currentUserId;
+    private ExecutorService executor;
     
     @Inject
     QuestionDao questionDao;
@@ -55,6 +60,7 @@ public class QuestionDetailActivity extends AppCompatActivity {
         
         currentUserId = prefsManager.getUserId();
         chatViewModel = new ViewModelProvider(this).get(ChatViewModel.class);
+        executor = Executors.newSingleThreadExecutor();
         
         setupToolbar();
         setupRecyclerView();
@@ -98,8 +104,8 @@ public class QuestionDetailActivity extends AppCompatActivity {
                 }
                 
                 // 根据问题状态启用/禁用输入
-                boolean isActive = !"closed".equals(question.getStatus()) && 
-                                 !"pending".equals(question.getStatus());
+                boolean isActive = !QuestionStatus.CLOSED.equals(question.getStatus()) && 
+                                 !QuestionStatus.PENDING.equals(question.getStatus());
                 binding.etMessage.setEnabled(isActive);
                 binding.btnSend.setEnabled(isActive);
             }
@@ -107,12 +113,15 @@ public class QuestionDetailActivity extends AppCompatActivity {
     }
     
     private String getStatusText(String status) {
+        if (status == null) {
+            return "";
+        }
         switch (status) {
-            case "pending":
+            case QuestionStatus.PENDING:
                 return getString(R.string.status_pending);
-            case "in_progress":
+            case QuestionStatus.IN_PROGRESS:
                 return getString(R.string.status_in_progress);
-            case "closed":
+            case QuestionStatus.CLOSED:
                 return getString(R.string.status_closed);
             default:
                 return status;
@@ -172,19 +181,24 @@ public class QuestionDetailActivity extends AppCompatActivity {
      * 只有在有未读消息时才调用 API，避免不必要的网络请求
      */
     private void checkAndMarkMessagesAsRead() {
-        new Thread(() -> {
-            int unreadCount = messageDao.getUnreadMessageCount(questionId, currentUserId);
-            if (unreadCount > 0) {
-                runOnUiThread(() -> {
-                    chatViewModel.markMessagesAsRead(questionId);
-                });
-            }
-        }).start();
+        if (executor != null && !executor.isShutdown()) {
+            executor.execute(() -> {
+                int unreadCount = messageDao.getUnreadMessageCount(questionId, currentUserId);
+                if (unreadCount > 0) {
+                    runOnUiThread(() -> {
+                        chatViewModel.markMessagesAsRead(questionId);
+                    });
+                }
+            });
+        }
     }
     
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdown();
+        }
         binding = null;
     }
 }

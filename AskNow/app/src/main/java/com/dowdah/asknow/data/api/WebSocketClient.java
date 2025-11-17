@@ -16,6 +16,8 @@ import okhttp3.WebSocketListener;
 public class WebSocketClient {
     private static final String TAG = "WebSocketClient";
     private static final int[] BACKOFF_DELAYS = {1000, 2000, 4000, 8000, 16000, 30000}; // milliseconds
+    private static final int MAX_RETRY_COUNT = 10; // 最多重连10次
+    private static final long HEARTBEAT_INTERVAL = 30000; // 心跳间隔30秒
     
     private WebSocket webSocket;
     private final OkHttpClient client;
@@ -24,6 +26,7 @@ public class WebSocketClient {
     private final Handler handler;
     private int retryCount = 0;
     private boolean isManuallyDisconnected = false;
+    private final Runnable heartbeatRunnable;
     
     public interface WebSocketCallback {
         void onConnected();
@@ -37,6 +40,26 @@ public class WebSocketClient {
         this.url = url;
         this.callback = callback;
         this.handler = new Handler(Looper.getMainLooper());
+        
+        // 心跳机制：定期发送ping保持连接活跃
+        this.heartbeatRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (webSocket != null && !isManuallyDisconnected) {
+                    // 发送心跳消息
+                    try {
+                        WebSocketMessage heartbeat = new WebSocketMessage();
+                        heartbeat.setType("PING");
+                        sendMessage(heartbeat);
+                        Log.d(TAG, "Heartbeat sent");
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error sending heartbeat", e);
+                    }
+                    // 继续调度下一次心跳
+                    handler.postDelayed(this, HEARTBEAT_INTERVAL);
+                }
+            }
+        };
     }
     
     public void connect() {
@@ -57,6 +80,8 @@ public class WebSocketClient {
             public void onOpen(WebSocket webSocket, Response response) {
                 Log.d(TAG, "WebSocket connected");
                 retryCount = 0;
+                // 启动心跳
+                handler.postDelayed(heartbeatRunnable, HEARTBEAT_INTERVAL);
                 handler.post(() -> callback.onConnected());
             }
             
@@ -107,6 +132,8 @@ public class WebSocketClient {
     
     public void disconnect() {
         isManuallyDisconnected = true;
+        // 停止心跳
+        handler.removeCallbacks(heartbeatRunnable);
         if (webSocket != null) {
             webSocket.close(1000, "Manual disconnect");
             webSocket = null;
@@ -129,8 +156,15 @@ public class WebSocketClient {
     }
     
     private void reconnect() {
+        // 检查是否超过最大重连次数
+        if (retryCount >= MAX_RETRY_COUNT) {
+            Log.e(TAG, "Max retry count reached. Giving up reconnection.");
+            handler.post(() -> callback.onError(new Exception("Max retry count reached")));
+            return;
+        }
+        
         int delay = BACKOFF_DELAYS[Math.min(retryCount, BACKOFF_DELAYS.length - 1)];
-        Log.d(TAG, "Reconnecting in " + delay + "ms (attempt " + (retryCount + 1) + ")");
+        Log.d(TAG, "Reconnecting in " + delay + "ms (attempt " + (retryCount + 1) + "/" + MAX_RETRY_COUNT + ")");
         
         handler.postDelayed(() -> {
             if (!isManuallyDisconnected) {
@@ -139,6 +173,13 @@ public class WebSocketClient {
         }, delay);
         
         retryCount++;
+    }
+    
+    /**
+     * 重置重连计数器（当手动重连时使用）
+     */
+    public void resetRetryCount() {
+        retryCount = 0;
     }
 }
 

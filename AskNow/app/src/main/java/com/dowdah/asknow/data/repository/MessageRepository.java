@@ -28,6 +28,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext;
 public class MessageRepository {
     private static final String TAG = "MessageRepository";
     private static final int MAX_RETRY_COUNT = 3;
+    private static final long INITIAL_RETRY_DELAY = 1000; // 1秒
+    private static final int RETRY_BACKOFF_MULTIPLIER = 2; // 指数退避
     
     private final PendingMessageDao pendingMessageDao;
     private final com.dowdah.asknow.data.local.dao.MessageDao messageDao;
@@ -37,6 +39,7 @@ public class MessageRepository {
     private final Gson gson;
     private WebSocketClient webSocketClient;
     private boolean isNetworkAvailable = false;
+    private ConnectivityManager.NetworkCallback networkCallback;
     
     @Inject
     public MessageRepository(
@@ -170,7 +173,7 @@ public class MessageRepository {
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build();
         
-        connectivityManager.registerNetworkCallback(networkRequest, new ConnectivityManager.NetworkCallback() {
+        networkCallback = new ConnectivityManager.NetworkCallback() {
             @Override
             public void onAvailable(Network network) {
                 Log.d(TAG, "Network available");
@@ -183,7 +186,9 @@ public class MessageRepository {
                 Log.d(TAG, "Network lost");
                 isNetworkAvailable = false;
             }
-        });
+        };
+        
+        connectivityManager.registerNetworkCallback(networkRequest, networkCallback);
     }
     
     /**
@@ -295,7 +300,8 @@ public class MessageRepository {
             } catch (Exception e) {
                 Log.e(TAG, "Error marking messages as read", e);
                 if (callback != null) {
-                    callback.onError(e.getMessage());
+                    String errorMessage = getDetailedErrorMessage(e);
+                    callback.onError(errorMessage);
                 }
             }
         });
@@ -307,6 +313,154 @@ public class MessageRepository {
     public interface MarkReadCallback {
         void onSuccess();
         void onError(String error);
+    }
+    
+    /**
+     * 带重试机制的标记已读
+     * 使用指数退避策略重试失败的网络请求
+     */
+    public void markMessagesAsReadWithRetry(String token, long questionId, long currentUserId, MarkReadCallback callback) {
+        markMessagesAsReadWithRetry(token, questionId, currentUserId, callback, 0);
+    }
+    
+    private void markMessagesAsReadWithRetry(String token, long questionId, long currentUserId, MarkReadCallback callback, int retryCount) {
+        executor.execute(() -> {
+            try {
+                // 先更新本地数据库
+                messageDao.markMessagesAsRead(questionId, currentUserId);
+                Log.d(TAG, "Marked messages as read locally for question " + questionId);
+                
+                // 然后通知服务器（如果网络可用）
+                if (isNetworkAvailable && apiService != null) {
+                    String authHeader = "Bearer " + token;
+                    JsonObject requestBody = new JsonObject();
+                    requestBody.addProperty("questionId", questionId);
+                    
+                    apiService.markMessagesAsRead(authHeader, requestBody).enqueue(new retrofit2.Callback<JsonObject>() {
+                        @Override
+                        public void onResponse(retrofit2.Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
+                            if (response.isSuccessful()) {
+                                Log.d(TAG, "Successfully marked messages as read on server");
+                                if (callback != null) {
+                                    callback.onSuccess();
+                                }
+                            } else {
+                                // 服务器返回错误，尝试重试
+                                handleRetry(token, questionId, currentUserId, callback, retryCount, 
+                                    "Server error: " + response.code());
+                            }
+                        }
+                        
+                        @Override
+                        public void onFailure(retrofit2.Call<JsonObject> call, Throwable t) {
+                            // 网络错误，尝试重试
+                            handleRetry(token, questionId, currentUserId, callback, retryCount, 
+                                "Network error: " + t.getMessage());
+                        }
+                    });
+                } else {
+                    if (callback != null) {
+                        callback.onSuccess();
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error marking messages as read", e);
+                if (callback != null) {
+                    callback.onError(e.getMessage());
+                }
+            }
+        });
+    }
+    
+    /**
+     * 处理重试逻辑
+     */
+    private void handleRetry(String token, long questionId, long currentUserId, 
+                            MarkReadCallback callback, int retryCount, String error) {
+        if (retryCount < MAX_RETRY_COUNT) {
+            long delay = INITIAL_RETRY_DELAY * (long) Math.pow(RETRY_BACKOFF_MULTIPLIER, retryCount);
+            Log.w(TAG, error + ". Retrying in " + delay + "ms (attempt " + (retryCount + 1) + "/" + MAX_RETRY_COUNT + ")");
+            
+            // 延迟后重试
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                markMessagesAsReadWithRetry(token, questionId, currentUserId, callback, retryCount + 1);
+            }, delay);
+        } else {
+            Log.e(TAG, "Max retry count reached for marking messages as read. " + error);
+            // 本地已更新，不算彻底失败
+            if (callback != null) {
+                callback.onSuccess();
+            }
+        }
+    }
+    
+    /**
+     * 获取详细的错误信息
+     * 
+     * @param error 异常对象
+     * @return 用户友好的错误信息
+     */
+    private String getDetailedErrorMessage(Throwable error) {
+        if (error == null) {
+            return "未知错误";
+        }
+        
+        // 网络超时
+        if (error instanceof java.net.SocketTimeoutException) {
+            return "网络连接超时，请检查网络后重试";
+        }
+        
+        // 无网络连接
+        if (error instanceof java.net.UnknownHostException) {
+            return "无法连接到服务器，请检查网络设置";
+        }
+        
+        // 连接被拒绝
+        if (error instanceof java.net.ConnectException) {
+            return "服务器拒绝连接，请稍后重试";
+        }
+        
+        // 通用IO错误
+        if (error instanceof java.io.IOException) {
+            return "网络错误: " + error.getMessage();
+        }
+        
+        // 数据库错误
+        if (error instanceof android.database.sqlite.SQLiteException) {
+            return "数据库错误，请稍后重试";
+        }
+        
+        // 其他错误
+        String message = error.getMessage();
+        return message != null && !message.isEmpty() ? 
+            "操作失败: " + message : "操作失败，请重试";
+    }
+    
+    /**
+     * Clean up resources to prevent memory leaks
+     * Should be called when the repository is no longer needed
+     */
+    public void cleanup() {
+        // Unregister network callback
+        if (networkCallback != null) {
+            ConnectivityManager connectivityManager = 
+                (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (connectivityManager != null) {
+                try {
+                    connectivityManager.unregisterNetworkCallback(networkCallback);
+                    Log.d(TAG, "Network callback unregistered");
+                } catch (Exception e) {
+                    Log.e(TAG, "Error unregistering network callback", e);
+                }
+            }
+            networkCallback = null;
+        }
+        
+        // Shutdown executor
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdown();
+            Log.d(TAG, "Executor shutdown");
+        }
     }
 }
 

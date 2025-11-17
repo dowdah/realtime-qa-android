@@ -12,6 +12,7 @@ import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
+import com.dowdah.asknow.constants.QuestionStatus;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.databinding.FragmentQuestionListByStatusBinding;
 import com.dowdah.asknow.ui.adapter.QuestionAdapter;
@@ -86,6 +87,14 @@ public class QuestionListByStatusFragment extends Fragment {
         binding.recyclerView.setLayoutManager(layoutManager);
         binding.recyclerView.setAdapter(adapter);
         
+        // 性能优化：RecyclerView大小固定，避免重新计算
+        binding.recyclerView.setHasFixedSize(true);
+        
+        // 性能优化：减少item变化动画，提高流畅度
+        if (binding.recyclerView.getItemAnimator() != null) {
+            binding.recyclerView.getItemAnimator().setChangeDuration(0);
+        }
+        
         // 设置重试监听
         adapter.setRetryListener(() -> {
             viewModel.loadMoreQuestions();
@@ -118,21 +127,21 @@ public class QuestionListByStatusFragment extends Fragment {
     }
     
     private void observeViewModel() {
-        if ("pending".equals(status)) {
+        if (QuestionStatus.PENDING.equals(status)) {
             viewModel.getPendingQuestions().observe(getViewLifecycleOwner(), questions -> {
                 if (questions != null) {
                     adapter.setQuestions(questions);
                     binding.emptyView.setVisibility(questions.isEmpty() ? View.VISIBLE : View.GONE);
                 }
             });
-        } else if ("in_progress".equals(status)) {
+        } else if (QuestionStatus.IN_PROGRESS.equals(status)) {
             viewModel.getInProgressQuestions().observe(getViewLifecycleOwner(), questions -> {
                 if (questions != null) {
                     adapter.setQuestions(questions);
                     binding.emptyView.setVisibility(questions.isEmpty() ? View.VISIBLE : View.GONE);
                 }
             });
-        } else if ("closed".equals(status)) {
+        } else if (QuestionStatus.CLOSED.equals(status)) {
             viewModel.getClosedQuestions().observe(getViewLifecycleOwner(), questions -> {
                 if (questions != null) {
                     adapter.setQuestions(questions);
