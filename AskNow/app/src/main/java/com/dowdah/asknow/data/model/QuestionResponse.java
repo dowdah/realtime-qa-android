@@ -1,5 +1,7 @@
 package com.dowdah.asknow.data.model;
 
+import java.util.List;
+
 public class QuestionResponse {
     private boolean success;
     private String message;
@@ -36,7 +38,7 @@ public class QuestionResponse {
         private long id;
         private long userId;
         private String content;
-        private String imagePath;
+        private List<String> imagePaths;
         private String status;
         private long createdAt;
 
@@ -64,12 +66,12 @@ public class QuestionResponse {
             this.content = content;
         }
 
-        public String getImagePath() {
-            return imagePath;
+        public List<String> getImagePaths() {
+            return imagePaths;
         }
 
-        public void setImagePath(String imagePath) {
-            this.imagePath = imagePath;
+        public void setImagePaths(List<String> imagePaths) {
+            this.imagePaths = imagePaths;
         }
 
         public String getStatus() {

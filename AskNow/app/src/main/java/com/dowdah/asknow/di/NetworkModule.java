@@ -61,7 +61,8 @@ public class NetworkModule {
             .retryOnConnectionFailure(true)
             // 连接池配置：最多5个空闲连接，保持5分钟
             .connectionPool(new okhttp3.ConnectionPool(5, 5, TimeUnit.MINUTES))
-            // Ping间隔，保持WebSocket连接活跃
+            // WebSocket 协议层 ping/pong 帧：每30秒自动发送，保持连接活跃并检测僵尸连接
+            // 无需应用层再实现 JSON heartbeat
             .pingInterval(30, TimeUnit.SECONDS)
             .build();
     }

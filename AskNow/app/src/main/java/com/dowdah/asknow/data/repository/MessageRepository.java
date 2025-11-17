@@ -11,6 +11,7 @@ import com.dowdah.asknow.data.api.WebSocketClient;
 import com.dowdah.asknow.data.local.dao.PendingMessageDao;
 import com.dowdah.asknow.data.local.entity.PendingMessageEntity;
 import com.dowdah.asknow.data.model.WebSocketMessage;
+import com.dowdah.asknow.utils.ErrorHandler;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
@@ -41,20 +42,30 @@ public class MessageRepository {
     private WebSocketClient webSocketClient;
     private boolean isNetworkAvailable = false;
     private ConnectivityManager.NetworkCallback networkCallback;
+    private NetworkAvailableListener networkAvailableListener;
+    
+    /**
+     * 网络恢复监听器接口
+     */
+    public interface NetworkAvailableListener {
+        void onNetworkAvailable();
+    }
     
     @Inject
     public MessageRepository(
         @ApplicationContext Context context, 
         PendingMessageDao pendingMessageDao,
         com.dowdah.asknow.data.local.dao.MessageDao messageDao,
-        com.dowdah.asknow.data.api.ApiService apiService
+        com.dowdah.asknow.data.api.ApiService apiService,
+        @javax.inject.Named("single") ExecutorService executor,
+        Gson gson
     ) {
         this.context = context;
         this.pendingMessageDao = pendingMessageDao;
         this.messageDao = messageDao;
         this.apiService = apiService;
-        this.executor = Executors.newSingleThreadExecutor();
-        this.gson = new Gson();
+        this.executor = executor;
+        this.gson = gson;
         
         registerNetworkCallback();
         checkNetworkStatus();
@@ -62,6 +73,13 @@ public class MessageRepository {
     
     public void setWebSocketClient(WebSocketClient client) {
         this.webSocketClient = client;
+    }
+    
+    /**
+     * 设置网络恢复监听器
+     */
+    public void setNetworkAvailableListener(NetworkAvailableListener listener) {
+        this.networkAvailableListener = listener;
     }
     
     /**
@@ -213,11 +231,12 @@ public class MessageRepository {
     
     /**
      * Called when network becomes available
+     * 通知监听器而不是直接连接，避免重复连接
      */
     private void onNetworkAvailable() {
-        if (webSocketClient != null && !webSocketClient.isConnected()) {
-            Log.d(TAG, "Network available, attempting to reconnect WebSocket");
-            webSocketClient.connect();
+        Log.d(TAG, "Network available, notifying listener");
+        if (networkAvailableListener != null) {
+            networkAvailableListener.onNetworkAvailable();
         }
     }
     
@@ -262,7 +281,7 @@ public class MessageRepository {
             } catch (Exception e) {
                 Log.e(TAG, "Error getting unread message count", e);
                 if (callback != null) {
-                    callback.onError(getDetailedErrorMessage(e));
+                    callback.onError(ErrorHandler.getDetailedErrorMessage(e));
                 }
             }
         });
@@ -326,7 +345,7 @@ public class MessageRepository {
             } catch (Exception e) {
                 Log.e(TAG, "Error marking messages as read", e);
                 if (callback != null) {
-                    String errorMessage = getDetailedErrorMessage(e);
+                    String errorMessage = ErrorHandler.getDetailedErrorMessage(e);
                     callback.onError(errorMessage);
                 }
             }
@@ -408,8 +427,7 @@ public class MessageRepository {
             Log.w(TAG, error + ". Retrying in " + delay + "ms (attempt " + (retryCount + 1) + "/" + MAX_RETRY_COUNT + ")");
             
             // 延迟后重试
-            // 使用非弃用的 Handler 构造函数（显式传入 null 作为 callback）
-            new android.os.Handler(android.os.Looper.getMainLooper(), null).postDelayed(() -> {
+            com.dowdah.asknow.utils.ThreadUtils.executeOnMainDelayed(() -> {
                 markMessagesAsReadWithRetry(token, questionId, currentUserId, callback, retryCount + 1);
             }, delay);
         } else {
@@ -419,48 +437,6 @@ public class MessageRepository {
                 callback.onSuccess();
             }
         }
-    }
-    
-    /**
-     * 获取详细的错误信息
-     * 
-     * @param error 异常对象
-     * @return 用户友好的错误信息
-     */
-    private String getDetailedErrorMessage(Throwable error) {
-        if (error == null) {
-            return "未知错误";
-        }
-        
-        // 网络超时
-        if (error instanceof java.net.SocketTimeoutException) {
-            return "网络连接超时，请检查网络后重试";
-        }
-        
-        // 无网络连接
-        if (error instanceof java.net.UnknownHostException) {
-            return "无法连接到服务器，请检查网络设置";
-        }
-        
-        // 连接被拒绝
-        if (error instanceof java.net.ConnectException) {
-            return "服务器拒绝连接，请稍后重试";
-        }
-        
-        // 通用IO错误
-        if (error instanceof java.io.IOException) {
-            return "网络错误: " + error.getMessage();
-        }
-        
-        // 数据库错误
-        if (error instanceof android.database.sqlite.SQLiteException) {
-            return "数据库错误，请稍后重试";
-        }
-        
-        // 其他错误
-        String message = error.getMessage();
-        return message != null && !message.isEmpty() ? 
-            "操作失败: " + message : "操作失败，请重试";
     }
     
     /**

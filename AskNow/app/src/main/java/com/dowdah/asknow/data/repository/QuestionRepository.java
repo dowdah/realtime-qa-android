@@ -9,6 +9,7 @@ import com.dowdah.asknow.data.local.entity.MessageEntity;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
 import com.dowdah.asknow.data.model.MessagesListResponse;
 import com.dowdah.asknow.data.model.QuestionsListResponse;
+import com.dowdah.asknow.utils.ErrorHandler;
 import com.dowdah.asknow.utils.RetryHelper;
 
 import java.util.ArrayList;
@@ -38,13 +39,21 @@ public class QuestionRepository {
     private final QuestionDao questionDao;
     private final MessageDao messageDao;
     private final ExecutorService executor;
+    private final com.google.gson.Gson gson;
     
     @Inject
-    public QuestionRepository(ApiService apiService, QuestionDao questionDao, MessageDao messageDao) {
+    public QuestionRepository(
+        ApiService apiService, 
+        QuestionDao questionDao, 
+        MessageDao messageDao,
+        @javax.inject.Named("single") ExecutorService executor,
+        com.google.gson.Gson gson
+    ) {
         this.apiService = apiService;
         this.questionDao = questionDao;
         this.messageDao = messageDao;
-        this.executor = Executors.newSingleThreadExecutor();
+        this.executor = executor;
+        this.gson = gson;
     }
     
     /**
@@ -105,7 +114,12 @@ public class QuestionRepository {
                                 entity.setUserId(serverQuestion.getUserId());
                                 entity.setTutorId(serverQuestion.getTutorId());
                                 entity.setContent(serverQuestion.getContent());
-                                entity.setImagePath(serverQuestion.getImagePath());
+                                // 将图片路径列表转换为 JSON 字符串
+                                String imagePathsJson = null;
+                                if (serverQuestion.getImagePaths() != null && !serverQuestion.getImagePaths().isEmpty()) {
+                                    imagePathsJson = gson.toJson(serverQuestion.getImagePaths());
+                                }
+                                entity.setImagePaths(imagePathsJson);
                                 entity.setStatus(serverQuestion.getStatus());
                                 entity.setCreatedAt(serverQuestion.getCreatedAt());
                                 entity.setUpdatedAt(serverQuestion.getUpdatedAt());
@@ -166,7 +180,7 @@ public class QuestionRepository {
             public void onFailure(Call<QuestionsListResponse> call, Throwable t) {
                 Log.e(TAG, "Sync network error", t);
                 if (callback != null) {
-                    String errorMessage = getDetailedErrorMessage(t);
+                    String errorMessage = ErrorHandler.getDetailedErrorMessage(t);
                     callback.onError(errorMessage);
                 }
             }
@@ -356,43 +370,6 @@ public class QuestionRepository {
         void onSuccess(int syncedCount);
         void onError(String errorMessage);
         void onPageLoaded(boolean hasMore);
-    }
-    
-    /**
-     * 获取详细的错误信息
-     * 
-     * @param error 异常对象
-     * @return 用户友好的错误信息
-     */
-    private String getDetailedErrorMessage(Throwable error) {
-        if (error == null) {
-            return "未知错误";
-        }
-        
-        // 网络超时
-        if (error instanceof java.net.SocketTimeoutException) {
-            return "网络连接超时，请检查网络后重试";
-        }
-        
-        // 无网络连接
-        if (error instanceof java.net.UnknownHostException) {
-            return "无法连接到服务器，请检查网络设置";
-        }
-        
-        // 连接被拒绝
-        if (error instanceof java.net.ConnectException) {
-            return "服务器拒绝连接，请稍后重试";
-        }
-        
-        // 通用IO错误
-        if (error instanceof java.io.IOException) {
-            return "网络错误: " + error.getMessage();
-        }
-        
-        // 其他错误
-        String message = error.getMessage();
-        return message != null && !message.isEmpty() ? 
-            "同步失败: " + message : "同步失败，请重试";
     }
     
     /**

@@ -35,16 +35,15 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textSize="14sp"
-                android:textColor="@color/textPrimary" />
+                android:textColor="?attr/colorOnSurface" />
 
-            <ImageView
-                android:id="@+id/ivQuestion"
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvQuestionImages"
                 android:layout_width="match_parent"
-                android:layout_height="150dp"
+                android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:scaleType="centerCrop"
                 android:visibility="gone"
-                android:contentDescription="Question image" />
+                android:orientation="horizontal" />
 
             <TextView
                 android:id="@+id/tvStatus"
@@ -62,7 +61,7 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:background="@color/background" />
+        android:background="?attr/colorSurface" />
 
     <!-- Input Area -->
     <LinearLayout
@@ -70,8 +69,20 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:padding="8dp"
-        android:background="@android:color/white"
+        android:background="?attr/colorSurfaceContainerLow"
         android:elevation="8dp">
+
+        <ImageView
+            android:id="@+id/btnSelectImage"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_gallery"
+            android:contentDescription="@string/select_image"
+            android:layout_gravity="center_vertical"
+            android:padding="8dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless" />
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etMessage"

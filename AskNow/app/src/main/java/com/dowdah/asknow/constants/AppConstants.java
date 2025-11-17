@@ -109,6 +109,16 @@ public final class AppConstants {
     public static final int SCROLL_LOAD_THRESHOLD = 5;
     
     /**
+     * 分页加载触发阈值（接近底部时提前加载）
+     */
+    public static final int LOAD_MORE_THRESHOLD = 2;
+    
+    /**
+     * 未读消息显示上限（超过此数量显示 99+）
+     */
+    public static final int MAX_UNREAD_BADGE_COUNT = 99;
+    
+    /**
      * Toast显示时长（毫秒）
      */
     public static final int TOAST_DURATION_MS = 2000;
@@ -117,6 +127,18 @@ public final class AppConstants {
      * 防抖延迟（毫秒）防止重复点击
      */
     public static final long DEBOUNCE_DELAY_MS = 500;
+    
+    // ==================== 用户角色常量 ====================
+    
+    /**
+     * 学生角色
+     */
+    public static final String ROLE_STUDENT = "student";
+    
+    /**
+     * 教师角色
+     */
+    public static final String ROLE_TUTOR = "tutor";
     
     // ==================== 数据库相关 ====================
     
@@ -147,4 +169,5 @@ public final class AppConstants {
         throw new AssertionError("Cannot instantiate constants class");
     }
 }
+
 

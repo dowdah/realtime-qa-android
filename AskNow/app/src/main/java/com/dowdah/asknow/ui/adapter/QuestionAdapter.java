@@ -37,9 +37,7 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
     private OnRetryClickListener retryListener;
     private MessageDao messageDao;
     private long currentUserId;
-    
-    // Shared executor for all unread count queries
-    private static final ExecutorService sharedExecutor = Executors.newFixedThreadPool(4);
+    private ExecutorService executor;
     
     public interface OnQuestionClickListener {
         void onQuestionClick(QuestionEntity question);
@@ -53,10 +51,11 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
         this.listener = listener;
     }
     
-    public QuestionAdapter(OnQuestionClickListener listener, MessageDao messageDao, long currentUserId) {
+    public QuestionAdapter(OnQuestionClickListener listener, MessageDao messageDao, long currentUserId, ExecutorService executor) {
         this.listener = listener;
         this.messageDao = messageDao;
         this.currentUserId = currentUserId;
+        this.executor = executor;
     }
     
     public void setRetryListener(OnRetryClickListener retryListener) {
@@ -113,8 +112,8 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
                    (oldQuestion.getTutorId() == null ? newQuestion.getTutorId() == null : 
                     oldQuestion.getTutorId().equals(newQuestion.getTutorId())) &&
                    oldQuestion.getContent().equals(newQuestion.getContent()) &&
-                   (oldQuestion.getImagePath() == null ? newQuestion.getImagePath() == null : 
-                    oldQuestion.getImagePath().equals(newQuestion.getImagePath())) &&
+                   (oldQuestion.getImagePaths() == null ? newQuestion.getImagePaths() == null : 
+                    oldQuestion.getImagePaths().equals(newQuestion.getImagePaths())) &&
                    oldQuestion.getStatus().equals(newQuestion.getStatus()) &&
                    oldQuestion.getCreatedAt() == newQuestion.getCreatedAt() &&
                    oldQuestion.getUpdatedAt() == newQuestion.getUpdatedAt();
@@ -184,7 +183,7 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
         if (holder instanceof QuestionViewHolder) {
             QuestionEntity question = questions.get(position);
-            ((QuestionViewHolder) holder).bind(question, listener, messageDao, currentUserId);
+            ((QuestionViewHolder) holder).bind(question, listener, messageDao, currentUserId, executor);
         } else if (holder instanceof LoadingFooterViewHolder) {
             ((LoadingFooterViewHolder) holder).bind(showRetryFooter, retryListener);
         }
@@ -209,7 +208,7 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
             tvUnreadBadge = itemView.findViewById(R.id.tvUnreadBadge);
         }
         
-        public void bind(QuestionEntity question, OnQuestionClickListener listener, MessageDao messageDao, long currentUserId) {
+        public void bind(QuestionEntity question, OnQuestionClickListener listener, MessageDao messageDao, long currentUserId, ExecutorService executor) {
             if (question == null) {
                 return;
             }
@@ -224,12 +223,12 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
             tvDate.setText(sdf.format(new Date(question.getCreatedAt())));
             
             // 显示未读消息数量
-            if (messageDao != null && currentUserId > 0) {
-                sharedExecutor.execute(() -> {
+            if (messageDao != null && currentUserId > 0 && executor != null) {
+                executor.execute(() -> {
                     int unreadCount = messageDao.getUnreadMessageCount(question.getId(), currentUserId);
-                    new Handler(Looper.getMainLooper(), null).post(() -> {
+                    com.dowdah.asknow.utils.ThreadUtils.executeOnMain(() -> {
                         if (unreadCount > 0) {
-                            tvUnreadBadge.setText(String.valueOf(Math.min(unreadCount, 99)));
+                            tvUnreadBadge.setText(String.valueOf(Math.min(unreadCount, com.dowdah.asknow.constants.AppConstants.MAX_UNREAD_BADGE_COUNT)));
                             tvUnreadBadge.setVisibility(View.VISIBLE);
                         } else {
                             tvUnreadBadge.setVisibility(View.GONE);

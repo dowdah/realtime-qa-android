@@ -4,11 +4,11 @@ import android.app.Application;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
-import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.dowdah.asknow.R;
+import com.dowdah.asknow.base.BaseViewModel;
 import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.model.LoginRequest;
 import com.dowdah.asknow.data.model.LoginResponse;
@@ -24,8 +24,20 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
+/**
+ * AuthViewModel - 认证相关的ViewModel
+ * 
+ * 主要功能：
+ * - 用户登录
+ * - 用户注册
+ * - WebSocket连接管理
+ * 
+ * 优化改进：
+ * - 继承 BaseViewModel，复用线程池和错误处理
+ * - 提取统一的认证逻辑（performAuthentication）
+ */
 @HiltViewModel
-public class AuthViewModel extends AndroidViewModel {
+public class AuthViewModel extends BaseViewModel {
     private static final String TAG = "AuthViewModel";
     
     private final ApiService apiService;
@@ -34,10 +46,14 @@ public class AuthViewModel extends AndroidViewModel {
     
     private final MutableLiveData<AuthResult> loginResult = new MutableLiveData<>();
     private final MutableLiveData<AuthResult> registerResult = new MutableLiveData<>();
-    private final MutableLiveData<Boolean> loading = new MutableLiveData<>(false);
     
     @Inject
-    public AuthViewModel(@NonNull Application application, ApiService apiService, SharedPreferencesManager prefsManager, WebSocketManager webSocketManager) {
+    public AuthViewModel(
+        @NonNull Application application, 
+        ApiService apiService, 
+        SharedPreferencesManager prefsManager, 
+        WebSocketManager webSocketManager
+    ) {
         super(application);
         this.apiService = apiService;
         this.prefsManager = prefsManager;
@@ -52,54 +68,41 @@ public class AuthViewModel extends AndroidViewModel {
         return registerResult;
     }
     
-    public LiveData<Boolean> getLoading() {
-        return loading;
-    }
-    
+    /**
+     * 用户登录
+     * 
+     * @param username 用户名
+     * @param password 密码
+     */
     public void login(String username, String password) {
         if (username.isEmpty() || password.isEmpty()) {
             loginResult.setValue(new AuthResult(false, getApplication().getString(R.string.username_password_required), null));
             return;
         }
         
-        loading.setValue(true);
+        setLoading(true);
         LoginRequest request = new LoginRequest(username, password);
         
         apiService.login(request).enqueue(new Callback<LoginResponse>() {
             @Override
             public void onResponse(Call<LoginResponse> call, Response<LoginResponse> response) {
-                loading.setValue(false);
-                if (response.isSuccessful() && response.body() != null) {
-                    LoginResponse loginResponse = response.body();
-                    if (loginResponse.isSuccess()) {
-                        // Save user data
-                        prefsManager.saveToken(loginResponse.getToken());
-                        prefsManager.saveUserId(loginResponse.getUser().getId());
-                        prefsManager.saveUsername(loginResponse.getUser().getUsername());
-                        prefsManager.saveRole(loginResponse.getUser().getRole());
-                        
-                        // Connect WebSocket
-                        webSocketManager.connect();
-                        
-                        loginResult.setValue(new AuthResult(true, loginResponse.getMessage(), loginResponse.getUser().getRole()));
-                        Log.d(TAG, "Login successful: " + loginResponse.getUser().getUsername());
-                    } else {
-                        loginResult.setValue(new AuthResult(false, loginResponse.getMessage(), null));
-                    }
-                } else {
-                    loginResult.setValue(new AuthResult(false, getApplication().getString(R.string.login_failed, response.message()), null));
-                }
+                handleLoginResponse(response, response.body(), loginResult);
             }
             
             @Override
             public void onFailure(Call<LoginResponse> call, Throwable t) {
-                loading.setValue(false);
-                loginResult.setValue(new AuthResult(false, getApplication().getString(R.string.network_error, t.getMessage()), null));
-                Log.e(TAG, "Login error", t);
+                handleAuthFailure(t, loginResult, "Login");
             }
         });
     }
     
+    /**
+     * 用户注册
+     * 
+     * @param username 用户名
+     * @param password 密码
+     * @param role 用户角色
+     */
     public void register(String username, String password, String role) {
         if (username.isEmpty() || password.isEmpty()) {
             registerResult.setValue(new AuthResult(false, getApplication().getString(R.string.username_password_required), null));
@@ -110,42 +113,104 @@ public class AuthViewModel extends AndroidViewModel {
             role = "student"; // Default role
         }
         
-        loading.setValue(true);
+        setLoading(true);
         RegisterRequest request = new RegisterRequest(username, password, role);
         
         apiService.register(request).enqueue(new Callback<RegisterResponse>() {
             @Override
             public void onResponse(Call<RegisterResponse> call, Response<RegisterResponse> response) {
-                loading.setValue(false);
-                if (response.isSuccessful() && response.body() != null) {
-                    RegisterResponse registerResponse = response.body();
-                    if (registerResponse.isSuccess()) {
-                        // Save user data
-                        prefsManager.saveToken(registerResponse.getToken());
-                        prefsManager.saveUserId(registerResponse.getUser().getId());
-                        prefsManager.saveUsername(registerResponse.getUser().getUsername());
-                        prefsManager.saveRole(registerResponse.getUser().getRole());
-                        
-                        // Connect WebSocket
-                        webSocketManager.connect();
-                        
-                        registerResult.setValue(new AuthResult(true, registerResponse.getMessage(), registerResponse.getUser().getRole()));
-                        Log.d(TAG, "Registration successful: " + registerResponse.getUser().getUsername());
-                    } else {
-                        registerResult.setValue(new AuthResult(false, registerResponse.getMessage(), null));
-                    }
-                } else {
-                    registerResult.setValue(new AuthResult(false, getApplication().getString(R.string.registration_failed, response.message()), null));
-                }
+                handleRegisterResponse(response, response.body(), registerResult);
             }
             
             @Override
             public void onFailure(Call<RegisterResponse> call, Throwable t) {
-                loading.setValue(false);
-                registerResult.setValue(new AuthResult(false, getApplication().getString(R.string.network_error, t.getMessage()), null));
-                Log.e(TAG, "Registration error", t);
+                handleAuthFailure(t, registerResult, "Registration");
             }
         });
+    }
+    
+    /**
+     * 处理登录响应
+     */
+    private void handleLoginResponse(
+        Response<LoginResponse> response,
+        LoginResponse loginResponse,
+        MutableLiveData<AuthResult> resultLiveData
+    ) {
+        setLoading(false);
+        
+        if (response.isSuccessful() && loginResponse != null) {
+            if (loginResponse.isSuccess()) {
+                saveUserDataAndConnect(
+                    loginResponse.getToken(),
+                    loginResponse.getUser().getId(),
+                    loginResponse.getUser().getUsername(),
+                    loginResponse.getUser().getRole()
+                );
+                
+                resultLiveData.setValue(new AuthResult(true, loginResponse.getMessage(), loginResponse.getUser().getRole()));
+                Log.d(TAG, "Login successful: " + loginResponse.getUser().getUsername());
+            } else {
+                resultLiveData.setValue(new AuthResult(false, loginResponse.getMessage(), null));
+            }
+        } else {
+            resultLiveData.setValue(new AuthResult(false, getApplication().getString(R.string.login_failed, response.message()), null));
+        }
+    }
+    
+    /**
+     * 处理注册响应
+     */
+    private void handleRegisterResponse(
+        Response<RegisterResponse> response,
+        RegisterResponse registerResponse,
+        MutableLiveData<AuthResult> resultLiveData
+    ) {
+        setLoading(false);
+        
+        if (response.isSuccessful() && registerResponse != null) {
+            if (registerResponse.isSuccess()) {
+                saveUserDataAndConnect(
+                    registerResponse.getToken(),
+                    registerResponse.getUser().getId(),
+                    registerResponse.getUser().getUsername(),
+                    registerResponse.getUser().getRole()
+                );
+                
+                resultLiveData.setValue(new AuthResult(true, registerResponse.getMessage(), registerResponse.getUser().getRole()));
+                Log.d(TAG, "Registration successful: " + registerResponse.getUser().getUsername());
+            } else {
+                resultLiveData.setValue(new AuthResult(false, registerResponse.getMessage(), null));
+            }
+        } else {
+            resultLiveData.setValue(new AuthResult(false, getApplication().getString(R.string.registration_failed, response.message()), null));
+        }
+    }
+    
+    /**
+     * 保存用户数据并连接WebSocket（登录和注册共用）
+     */
+    private void saveUserDataAndConnect(String token, long userId, String username, String role) {
+        prefsManager.saveToken(token);
+        prefsManager.saveUserId(userId);
+        prefsManager.saveUsername(username);
+        prefsManager.saveRole(role);
+        
+        // Connect WebSocket
+        webSocketManager.connect();
+    }
+    
+    /**
+     * 统一处理认证失败（登录和注册）
+     */
+    private void handleAuthFailure(
+        Throwable t,
+        MutableLiveData<AuthResult> resultLiveData,
+        String operationType
+    ) {
+        setLoading(false);
+        resultLiveData.setValue(new AuthResult(false, getApplication().getString(R.string.network_error, t.getMessage()), null));
+        Log.e(TAG, operationType + " error", t);
     }
     
     public static class AuthResult {

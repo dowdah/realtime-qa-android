@@ -16,12 +16,14 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.recyclerview.widget.GridLayoutManager;
 
 import com.bumptech.glide.Glide;
 import com.dowdah.asknow.R;
 import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.model.UploadResponse;
 import com.dowdah.asknow.databinding.ActivityPublishQuestionBinding;
+import com.dowdah.asknow.ui.adapter.ImagePreviewAdapter;
 import com.dowdah.asknow.utils.SharedPreferencesManager;
 import com.dowdah.asknow.utils.ValidationUtils;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -29,6 +31,8 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.inject.Inject;
 
@@ -52,15 +56,37 @@ public class PublishQuestionActivity extends AppCompatActivity {
     @Inject
     SharedPreferencesManager prefsManager;
     
-    private Uri selectedImageUri;
-    private String uploadedImagePath;
+    private static final int MAX_IMAGES = 9;
+    private List<Uri> selectedImageUris = new ArrayList<>();
+    private List<String> uploadedImagePaths = new ArrayList<>();
+    private ImagePreviewAdapter imagePreviewAdapter;
     
     private final ActivityResultLauncher<Intent> imagePickerLauncher = registerForActivityResult(
         new ActivityResultContracts.StartActivityForResult(),
         result -> {
             if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
-                selectedImageUri = result.getData().getData();
-                displayImage();
+                Intent data = result.getData();
+                
+                // 处理多图片选择
+                if (data.getClipData() != null) {
+                    int count = data.getClipData().getItemCount();
+                    for (int i = 0; i < count && selectedImageUris.size() < MAX_IMAGES; i++) {
+                        Uri imageUri = data.getClipData().getItemAt(i).getUri();
+                        selectedImageUris.add(imageUri);
+                    }
+                } else if (data.getData() != null) {
+                    // 单张图片
+                    if (selectedImageUris.size() < MAX_IMAGES) {
+                        selectedImageUris.add(data.getData());
+                    }
+                }
+                
+                updateImagePreview();
+                
+                if (selectedImageUris.size() >= MAX_IMAGES) {
+                    Toast.makeText(this, getString(R.string.max_images_reached, MAX_IMAGES), 
+                        Toast.LENGTH_SHORT).show();
+                }
             }
         }
     );
@@ -99,7 +125,25 @@ public class PublishQuestionActivity extends AppCompatActivity {
     }
     
     private void setupViews() {
-        binding.btnAddImage.setOnClickListener(v -> checkPermissionAndPickImage());
+        // 设置图片预览适配器
+        imagePreviewAdapter = new ImagePreviewAdapter();
+        binding.rvImagePreview.setLayoutManager(new GridLayoutManager(this, 3));
+        binding.rvImagePreview.setAdapter(imagePreviewAdapter);
+        
+        imagePreviewAdapter.setRemoveListener(position -> {
+            // 移除选中的图片
+            selectedImageUris.remove(position);
+            updateImagePreview();
+        });
+        
+        binding.btnAddImage.setOnClickListener(v -> {
+            if (selectedImageUris.size() >= MAX_IMAGES) {
+                Toast.makeText(this, getString(R.string.max_images_reached, MAX_IMAGES), 
+                    Toast.LENGTH_SHORT).show();
+            } else {
+                checkPermissionAndPickImage();
+            }
+        });
         
         binding.btnSubmit.setOnClickListener(v -> submitQuestion());
     }
@@ -132,15 +176,17 @@ public class PublishQuestionActivity extends AppCompatActivity {
     
     private void openImagePicker() {
         Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+        // 支持多选
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         imagePickerLauncher.launch(intent);
     }
     
-    private void displayImage() {
-        if (selectedImageUri != null) {
-            Glide.with(this)
-                .load(selectedImageUri)
-                .into(binding.ivPreview);
-            binding.ivPreview.setVisibility(android.view.View.VISIBLE);
+    private void updateImagePreview() {
+        if (selectedImageUris.isEmpty()) {
+            binding.rvImagePreview.setVisibility(android.view.View.GONE);
+        } else {
+            binding.rvImagePreview.setVisibility(android.view.View.VISIBLE);
+            imagePreviewAdapter.setImages(selectedImageUris);
         }
     }
     
@@ -174,18 +220,29 @@ public class PublishQuestionActivity extends AppCompatActivity {
         binding.btnSubmit.setEnabled(false);
         binding.progressBar.setVisibility(android.view.View.VISIBLE);
         
-        if (selectedImageUri != null) {
-            uploadImageThenSubmit(content);
+        if (!selectedImageUris.isEmpty()) {
+            uploadImagesThenSubmit(content);
         } else {
             submitQuestionToServer(content, null);
         }
     }
     
-    private void uploadImageThenSubmit(String content) {
-        File file = new File(getCacheDir(), "temp_image.jpg");
+    private void uploadImagesThenSubmit(String content) {
+        uploadedImagePaths.clear();
+        uploadNextImage(content, 0);
+    }
+    
+    private void uploadNextImage(String content, int index) {
+        if (index >= selectedImageUris.size()) {
+            // 所有图片上传完成，提交问题
+            submitQuestionToServer(content, uploadedImagePaths);
+            return;
+        }
         
-        // 使用try-with-resources自动关闭资源，防止内存泄漏
-        try (InputStream inputStream = getContentResolver().openInputStream(selectedImageUri);
+        Uri imageUri = selectedImageUris.get(index);
+        File file = new File(getCacheDir(), "temp_image_" + index + ".jpg");
+        
+        try (InputStream inputStream = getContentResolver().openInputStream(imageUri);
              FileOutputStream outputStream = new FileOutputStream(file)) {
             
             if (inputStream == null) {
@@ -194,7 +251,7 @@ public class PublishQuestionActivity extends AppCompatActivity {
                 return;
             }
             
-            byte[] buffer = new byte[4096]; // 增大缓冲区以提高性能
+            byte[] buffer = new byte[4096];
             int length;
             while ((length = inputStream.read(buffer)) > 0) {
                 outputStream.write(buffer, 0, length);
@@ -208,34 +265,35 @@ public class PublishQuestionActivity extends AppCompatActivity {
             apiService.uploadImage(token, imagePart).enqueue(new Callback<UploadResponse>() {
                 @Override
                 public void onResponse(Call<UploadResponse> call, Response<UploadResponse> response) {
+                    // 清理临时文件
+                    if (file.exists()) {
+                        file.delete();
+                    }
+                    
                     if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                        uploadedImagePath = response.body().getImagePath();
-                        submitQuestionToServer(content, uploadedImagePath);
+                        uploadedImagePaths.add(response.body().getImagePath());
+                        // 上传下一张图片
+                        uploadNextImage(content, index + 1);
                     } else {
                         resetSubmitState();
                         String errorMsg = response.body() != null && response.body().getMessage() != null ?
                             response.body().getMessage() : getString(R.string.failed_to_upload_image);
                         Toast.makeText(PublishQuestionActivity.this, errorMsg, Toast.LENGTH_LONG).show();
                     }
-                    
-                    // 清理临时文件
-                    if (file.exists()) {
-                        file.delete();
-                    }
                 }
                 
                 @Override
                 public void onFailure(Call<UploadResponse> call, Throwable t) {
+                    // 清理临时文件
+                    if (file.exists()) {
+                        file.delete();
+                    }
+                    
                     resetSubmitState();
                     String errorMsg = t.getMessage() != null ? 
                         getString(R.string.upload_error, t.getMessage()) : 
                         getString(R.string.failed_to_upload_image);
                     Toast.makeText(PublishQuestionActivity.this, errorMsg, Toast.LENGTH_LONG).show();
-                    
-                    // 清理临时文件
-                    if (file.exists()) {
-                        file.delete();
-                    }
                 }
             });
             
@@ -263,8 +321,8 @@ public class PublishQuestionActivity extends AppCompatActivity {
         }
     }
     
-    private void submitQuestionToServer(String content, String imagePath) {
-        viewModel.createQuestion(content, imagePath);
+    private void submitQuestionToServer(String content, List<String> imagePaths) {
+        viewModel.createQuestion(content, imagePaths);
         Toast.makeText(this, R.string.question_submitted, Toast.LENGTH_SHORT).show();
         finish();
     }

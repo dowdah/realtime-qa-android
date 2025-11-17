@@ -58,10 +58,11 @@
             android:name=".ui.tutor.AnswerActivity"
             android:exported="false" />
         
-        <!-- Legacy MainActivity (can be removed if not used) -->
+        <!-- Image Preview Activity -->
         <activity
-            android:name=".MainActivity"
-            android:exported="false" />
+            android:name=".ui.image.ImagePreviewActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

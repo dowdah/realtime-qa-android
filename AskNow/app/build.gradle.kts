@@ -27,7 +27,7 @@ android {
         release {
             isMinifyEnabled = false
             // 生产环境使用实际服务器地址
-            buildConfigField("String", "BASE_URL", "\"https://your-server.com/\"")
+            buildConfigField("String", "BASE_URL", "\"http://frp-cup.com:13885/\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -81,6 +81,9 @@ dependencies {
     implementation(libs.glide)
     ksp(libs.glide.compiler)
     
+    // PhotoView - 流畅的图片缩放库
+    implementation(libs.photoview)
+    
     // Navigation
     implementation(libs.navigation.fragment)
     implementation(libs.navigation.ui)
@@ -93,7 +96,13 @@ dependencies {
     // SwipeRefreshLayout
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     
+    // Unit Testing
     testImplementation(libs.junit)
+    testImplementation(libs.mockito.core)
+    testImplementation(libs.mockito.kotlin)
+    testImplementation(libs.androidx.core.testing)
+    
+    // Instrumented Testing
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
 }

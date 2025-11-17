@@ -1,10 +1,19 @@
 package com.dowdah.asknow.ui.tutor;
 
+import android.Manifest;
+import android.app.Activity;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.view.View;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
@@ -12,14 +21,20 @@ import com.bumptech.glide.Glide;
 import com.dowdah.asknow.BuildConfig;
 import com.dowdah.asknow.R;
 import com.dowdah.asknow.constants.QuestionStatus;
+import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
 import com.dowdah.asknow.databinding.ActivityAnswerBinding;
+import com.dowdah.asknow.ui.adapter.ImageDisplayAdapter;
 import com.dowdah.asknow.ui.adapter.MessageAdapter;
 import com.dowdah.asknow.ui.chat.ChatViewModel;
+import com.dowdah.asknow.ui.image.ImagePreviewActivity;
+import com.dowdah.asknow.utils.ImageMessageHelper;
 import com.dowdah.asknow.utils.SharedPreferencesManager;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -39,6 +54,7 @@ public class AnswerActivity extends AppCompatActivity {
     private ExecutorService executor;
     private boolean isActivityInForeground = false;
     private boolean shouldScrollToBottom = false;
+    private ImageMessageHelper imageMessageHelper;
     
     @Inject
     QuestionDao questionDao;
@@ -48,6 +64,38 @@ public class AnswerActivity extends AppCompatActivity {
     
     @Inject
     SharedPreferencesManager prefsManager;
+    
+    @Inject
+    ApiService apiService;
+    
+    /**
+     * 图片选择结果处理
+     */
+    private final ActivityResultLauncher<Intent> imagePickerLauncher = registerForActivityResult(
+        new ActivityResultContracts.StartActivityForResult(),
+        result -> {
+            if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                Uri imageUri = result.getData().getData();
+                if (imageUri != null) {
+                    imageMessageHelper.uploadAndSendImage(imageUri);
+                }
+            }
+        }
+    );
+    
+    /**
+     * 权限请求处理
+     */
+    private final ActivityResultLauncher<String> permissionLauncher = registerForActivityResult(
+        new ActivityResultContracts.RequestPermission(),
+        isGranted -> {
+            if (isGranted) {
+                openImagePicker();
+            } else {
+                Toast.makeText(this, R.string.permission_denied, Toast.LENGTH_SHORT).show();
+            }
+        }
+    );
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,6 +113,15 @@ public class AnswerActivity extends AppCompatActivity {
         currentUserId = prefsManager.getUserId();
         chatViewModel = new ViewModelProvider(this).get(ChatViewModel.class);
         executor = Executors.newSingleThreadExecutor();
+        
+        // 初始化图片消息助手
+        imageMessageHelper = new ImageMessageHelper(
+            this,
+            apiService,
+            prefsManager,
+            chatViewModel,
+            questionId
+        );
         
         setupToolbar();
         setupRecyclerView();
@@ -89,6 +146,13 @@ public class AnswerActivity extends AppCompatActivity {
         LinearLayoutManager layoutManager = new LinearLayoutManager(this);
         binding.recyclerViewMessages.setLayoutManager(layoutManager);
         binding.recyclerViewMessages.setAdapter(messageAdapter);
+        
+        // 设置图片消息点击监听器
+        messageAdapter.setImageClickListener(imagePath -> {
+            ArrayList<String> imagePaths = new ArrayList<>();
+            imagePaths.add(imagePath);
+            openImagePreview(imagePaths, 0);
+        });
     }
     
     private void loadQuestionDetails() {
@@ -101,12 +165,35 @@ public class AnswerActivity extends AppCompatActivity {
                         binding.tvContent.setText(question.getContent());
                         binding.tvStatus.setText(getStatusText(currentStatus));
                         
-                        if (question.getImagePath() != null && !question.getImagePath().isEmpty()) {
-                            String imageUrl = BuildConfig.BASE_URL.replaceAll("/$", "") + question.getImagePath();
-                            Glide.with(this)
-                                .load(imageUrl)
-                                .into(binding.ivQuestion);
-                            binding.ivQuestion.setVisibility(View.VISIBLE);
+                        // 显示多张图片
+                        if (question.getImagePaths() != null && !question.getImagePaths().isEmpty()) {
+                            try {
+                                List<String> imagePaths = new com.google.gson.Gson().fromJson(
+                                    question.getImagePaths(), 
+                                    new com.google.gson.reflect.TypeToken<List<String>>(){}.getType()
+                                );
+                                
+                                if (imagePaths != null && !imagePaths.isEmpty()) {
+                                    ImageDisplayAdapter imageAdapter = new ImageDisplayAdapter();
+                                    binding.rvQuestionImages.setLayoutManager(
+                                        new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+                                    );
+                                    binding.rvQuestionImages.setAdapter(imageAdapter);
+                                    imageAdapter.setImages(imagePaths);
+                                    binding.rvQuestionImages.setVisibility(View.VISIBLE);
+                                    
+                                    // 设置图片点击监听器
+                                    imageAdapter.setClickListener((position, imagePath) -> {
+                                        openImagePreview(new ArrayList<>(imagePaths), position);
+                                    });
+                                } else {
+                                    binding.rvQuestionImages.setVisibility(View.GONE);
+                                }
+                            } catch (Exception e) {
+                                binding.rvQuestionImages.setVisibility(View.GONE);
+                            }
+                        } else {
+                            binding.rvQuestionImages.setVisibility(View.GONE);
                         }
                         
                         updateButtonStates(currentStatus);
@@ -216,6 +303,39 @@ public class AnswerActivity extends AppCompatActivity {
     
     private void setupInputArea() {
         binding.btnSend.setOnClickListener(v -> sendMessage());
+        
+        // 图片选择按钮点击事件
+        binding.btnSelectImage.setOnClickListener(v -> checkPermissionAndPickImage());
+    }
+    
+    /**
+     * 检查权限并打开图片选择器
+     */
+    private void checkPermissionAndPickImage() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
+                == PackageManager.PERMISSION_GRANTED) {
+            openImagePicker();
+        } else {
+            permissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES);
+        }
+    }
+    
+    /**
+     * 打开图片选择器
+     */
+    private void openImagePicker() {
+        Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+        imagePickerLauncher.launch(intent);
+    }
+    
+    /**
+     * 打开图片预览
+     */
+    private void openImagePreview(ArrayList<String> imagePaths, int position) {
+        Intent intent = new Intent(this, ImagePreviewActivity.class);
+        intent.putStringArrayListExtra("image_paths", imagePaths);
+        intent.putExtra("position", position);
+        startActivity(intent);
     }
     
     private void setupActionButtons() {
@@ -259,8 +379,7 @@ public class AnswerActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         isActivityInForeground = true;
-        // 检查是否有未读消息，只在有未读消息时才标记
-        checkAndMarkMessagesAsRead();
+        // LiveData 观察者会自动处理标记已读消息
     }
     
     @Override
@@ -270,16 +389,8 @@ public class AnswerActivity extends AppCompatActivity {
     }
     
     /**
-     * 检查并标记消息为已读
-     * 只有在有未读消息时才调用 API，避免不必要的网络请求
-     */
-    private void checkAndMarkMessagesAsRead() {
-        markMessagesAsReadIfNeeded();
-    }
-    
-    /**
      * 标记消息为已读（如果有未读消息）
-     * 该方法可以在消息列表更新或界面恢复时调用
+     * 该方法由 LiveData 观察者在界面前台时自动调用
      */
     private void markMessagesAsReadIfNeeded() {
         if (executor != null && !executor.isShutdown()) {
