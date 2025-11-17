@@ -19,7 +19,7 @@ import com.dowdah.asknow.data.local.entity.UserEntity;
         PendingMessageEntity.class,
         MessageEntity.class
     },
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 public abstract class AppDatabase extends RoomDatabase {

@@ -49,9 +49,20 @@ public class NetworkModule {
     public OkHttpClient provideOkHttpClient(HttpLoggingInterceptor loggingInterceptor) {
         return new OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
-            .connectTimeout(30, TimeUnit.SECONDS)
+            // 连接超时
+            .connectTimeout(15, TimeUnit.SECONDS)
+            // 读取超时
             .readTimeout(30, TimeUnit.SECONDS)
+            // 写入超时  
             .writeTimeout(30, TimeUnit.SECONDS)
+            // 调用超时（整个请求的总超时）
+            .callTimeout(60, TimeUnit.SECONDS)
+            // 连接失败重试
+            .retryOnConnectionFailure(true)
+            // 连接池配置：最多5个空闲连接，保持5分钟
+            .connectionPool(new okhttp3.ConnectionPool(5, 5, TimeUnit.MINUTES))
+            // Ping间隔，保持WebSocket连接活跃
+            .pingInterval(30, TimeUnit.SECONDS)
             .build();
     }
     

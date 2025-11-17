@@ -9,7 +9,9 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.bumptech.glide.Glide;
+import com.dowdah.asknow.BuildConfig;
 import com.dowdah.asknow.R;
+import com.dowdah.asknow.constants.QuestionStatus;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
@@ -17,6 +19,9 @@ import com.dowdah.asknow.databinding.ActivityAnswerBinding;
 import com.dowdah.asknow.ui.adapter.MessageAdapter;
 import com.dowdah.asknow.ui.chat.ChatViewModel;
 import com.dowdah.asknow.utils.SharedPreferencesManager;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.inject.Inject;
 
@@ -31,6 +36,9 @@ public class AnswerActivity extends AppCompatActivity {
     private long questionId;
     private long currentUserId;
     private String currentStatus;
+    private ExecutorService executor;
+    private boolean isActivityInForeground = false;
+    private boolean shouldScrollToBottom = false;
     
     @Inject
     QuestionDao questionDao;
@@ -56,6 +64,7 @@ public class AnswerActivity extends AppCompatActivity {
         
         currentUserId = prefsManager.getUserId();
         chatViewModel = new ViewModelProvider(this).get(ChatViewModel.class);
+        executor = Executors.newSingleThreadExecutor();
         
         setupToolbar();
         setupRecyclerView();
@@ -83,35 +92,40 @@ public class AnswerActivity extends AppCompatActivity {
     }
     
     private void loadQuestionDetails() {
-        new Thread(() -> {
-            QuestionEntity question = questionDao.getQuestionById(questionId);
-            runOnUiThread(() -> {
-                if (question != null) {
-                    currentStatus = question.getStatus();
-                    binding.tvContent.setText(question.getContent());
-                    binding.tvStatus.setText(getStatusText(currentStatus));
-                    
-                    if (question.getImagePath() != null && !question.getImagePath().isEmpty()) {
-                        String imageUrl = "http://10.0.2.2:8000" + question.getImagePath();
-                        Glide.with(this)
-                            .load(imageUrl)
-                            .into(binding.ivQuestion);
-                        binding.ivQuestion.setVisibility(View.VISIBLE);
+        if (executor != null && !executor.isShutdown()) {
+            executor.execute(() -> {
+                QuestionEntity question = questionDao.getQuestionById(questionId);
+                runOnUiThread(() -> {
+                    if (question != null) {
+                        currentStatus = question.getStatus();
+                        binding.tvContent.setText(question.getContent());
+                        binding.tvStatus.setText(getStatusText(currentStatus));
+                        
+                        if (question.getImagePath() != null && !question.getImagePath().isEmpty()) {
+                            String imageUrl = BuildConfig.BASE_URL.replaceAll("/$", "") + question.getImagePath();
+                            Glide.with(this)
+                                .load(imageUrl)
+                                .into(binding.ivQuestion);
+                            binding.ivQuestion.setVisibility(View.VISIBLE);
+                        }
+                        
+                        updateButtonStates(currentStatus);
                     }
-                    
-                    updateButtonStates(currentStatus);
-                }
+                });
             });
-        }).start();
+        }
     }
     
     private String getStatusText(String status) {
+        if (status == null) {
+            return "";
+        }
         switch (status) {
-            case "pending":
+            case QuestionStatus.PENDING:
                 return getString(R.string.status_pending);
-            case "in_progress":
+            case QuestionStatus.IN_PROGRESS:
                 return getString(R.string.status_in_progress);
-            case "closed":
+            case QuestionStatus.CLOSED:
                 return getString(R.string.status_closed);
             default:
                 return status;
@@ -119,22 +133,25 @@ public class AnswerActivity extends AppCompatActivity {
     }
     
     private void updateButtonStates(String status) {
+        if (status == null) {
+            return;
+        }
         switch (status) {
-            case "pending":
+            case QuestionStatus.PENDING:
                 binding.btnAccept.setVisibility(View.VISIBLE);
                 binding.btnAccept.setEnabled(true);
                 binding.btnClose.setVisibility(View.GONE);
                 binding.etMessage.setEnabled(false);
                 binding.btnSend.setEnabled(false);
                 break;
-            case "in_progress":
+            case QuestionStatus.IN_PROGRESS:
                 binding.btnAccept.setVisibility(View.GONE);
                 binding.btnClose.setVisibility(View.VISIBLE);
                 binding.btnClose.setEnabled(true);
                 binding.etMessage.setEnabled(true);
                 binding.btnSend.setEnabled(true);
                 break;
-            case "closed":
+            case QuestionStatus.CLOSED:
                 binding.btnAccept.setVisibility(View.GONE);
                 binding.btnClose.setVisibility(View.VISIBLE);
                 binding.btnClose.setEnabled(false);
@@ -144,13 +161,40 @@ public class AnswerActivity extends AppCompatActivity {
         }
     }
     
+    /**
+     * 检查用户是否在列表底部
+     * 用于智能滚动判断
+     */
+    private boolean isUserAtBottom() {
+        LinearLayoutManager layoutManager = (LinearLayoutManager) binding.recyclerViewMessages.getLayoutManager();
+        if (layoutManager != null) {
+            int lastVisiblePosition = layoutManager.findLastCompletelyVisibleItemPosition();
+            int totalItems = messageAdapter.getItemCount();
+            // 最后一项可见，或倒数第2项可见（容错）
+            return lastVisiblePosition >= totalItems - 2;
+        }
+        return true; // 默认返回 true，确保首次加载时滚动到底部
+    }
+    
     private void observeMessages() {
         messageDao.getMessagesByQuestionId(questionId).observe(this, messages -> {
             if (messages != null) {
+                int previousSize = messageAdapter.getItemCount();
                 messageAdapter.setMessages(messages);
-                // 滚动到最新消息
+                
+                // 智能滚动：仅在必要时滚动到底部
                 if (messages.size() > 0) {
-                    binding.recyclerViewMessages.scrollToPosition(messages.size() - 1);
+                    boolean shouldScroll = shouldScrollToBottom || 
+                                          (messages.size() > previousSize && isUserAtBottom());
+                    if (shouldScroll) {
+                        binding.recyclerViewMessages.smoothScrollToPosition(messages.size() - 1);
+                        shouldScrollToBottom = false; // 重置标志
+                    }
+                }
+                
+                // 如果界面在前台，自动标记未读消息为已读
+                if (isActivityInForeground) {
+                    markMessagesAsReadIfNeeded();
                 }
             }
         });
@@ -181,7 +225,7 @@ public class AnswerActivity extends AppCompatActivity {
     
     private void acceptQuestion() {
         chatViewModel.acceptQuestion(questionId);
-        currentStatus = "in_progress";
+        currentStatus = QuestionStatus.IN_PROGRESS;
         binding.tvStatus.setText(getStatusText(currentStatus));
         updateButtonStates(currentStatus);
         Toast.makeText(this, R.string.question_accepted, Toast.LENGTH_SHORT).show();
@@ -189,7 +233,7 @@ public class AnswerActivity extends AppCompatActivity {
     
     private void closeQuestion() {
         chatViewModel.closeQuestion(questionId);
-        currentStatus = "closed";
+        currentStatus = QuestionStatus.CLOSED;
         binding.tvStatus.setText(getStatusText(currentStatus));
         updateButtonStates(currentStatus);
         Toast.makeText(this, R.string.question_closed, Toast.LENGTH_SHORT).show();
@@ -206,14 +250,23 @@ public class AnswerActivity extends AppCompatActivity {
             return;
         }
         
+        // 发送消息时设置标志，确保滚动到底部
+        shouldScrollToBottom = true;
         chatViewModel.sendMessage(questionId, content);
     }
     
     @Override
     protected void onResume() {
         super.onResume();
+        isActivityInForeground = true;
         // 检查是否有未读消息，只在有未读消息时才标记
         checkAndMarkMessagesAsRead();
+    }
+    
+    @Override
+    protected void onPause() {
+        super.onPause();
+        isActivityInForeground = false;
     }
     
     /**
@@ -221,19 +274,32 @@ public class AnswerActivity extends AppCompatActivity {
      * 只有在有未读消息时才调用 API，避免不必要的网络请求
      */
     private void checkAndMarkMessagesAsRead() {
-        new Thread(() -> {
-            int unreadCount = messageDao.getUnreadMessageCount(questionId, currentUserId);
-            if (unreadCount > 0) {
-                runOnUiThread(() -> {
-                    chatViewModel.markMessagesAsRead(questionId);
-                });
-            }
-        }).start();
+        markMessagesAsReadIfNeeded();
+    }
+    
+    /**
+     * 标记消息为已读（如果有未读消息）
+     * 该方法可以在消息列表更新或界面恢复时调用
+     */
+    private void markMessagesAsReadIfNeeded() {
+        if (executor != null && !executor.isShutdown()) {
+            executor.execute(() -> {
+                int unreadCount = messageDao.getUnreadMessageCount(questionId, currentUserId);
+                if (unreadCount > 0) {
+                    runOnUiThread(() -> {
+                        chatViewModel.markMessagesAsRead(questionId);
+                    });
+                }
+            });
+        }
     }
     
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdown();
+        }
         binding = null;
     }
 }

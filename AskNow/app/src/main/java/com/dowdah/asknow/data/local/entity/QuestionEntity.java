@@ -3,9 +3,20 @@ package com.dowdah.asknow.data.local.entity;
 import androidx.annotation.Nullable;
 import androidx.room.Entity;
 import androidx.room.Ignore;
+import androidx.room.Index;
 import androidx.room.PrimaryKey;
 
-@Entity(tableName = "questions")
+@Entity(
+    tableName = "questions",
+    indices = {
+        @Index(value = "userId", name = "idx_questions_userId"),
+        @Index(value = "status", name = "idx_questions_status"),
+        @Index(value = "tutorId", name = "idx_questions_tutorId"),
+        @Index(value = {"tutorId", "status"}, name = "idx_questions_tutorId_status"),
+        @Index(value = "createdAt", name = "idx_questions_createdAt"),
+        @Index(value = "updatedAt", name = "idx_questions_updatedAt")
+    }
+)
 public class QuestionEntity {
     @PrimaryKey(autoGenerate = true)
     private long id;

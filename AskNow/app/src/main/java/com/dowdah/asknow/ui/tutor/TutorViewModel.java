@@ -6,6 +6,8 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
+import com.dowdah.asknow.constants.QuestionStatus;
+import com.dowdah.asknow.constants.WebSocketMessageType;
 import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
@@ -47,6 +49,9 @@ public class TutorViewModel extends ViewModel {
     private final MutableLiveData<Boolean> isLoadingMore = new MutableLiveData<>(false);
     private final MutableLiveData<Boolean> hasMoreData = new MutableLiveData<>(true);
     
+    // WebSocket message observer for cleanup
+    private final androidx.lifecycle.Observer<WebSocketMessage> webSocketMessageObserver;
+    
     @Inject
     public TutorViewModel(
         ApiService apiService,
@@ -64,35 +69,38 @@ public class TutorViewModel extends ViewModel {
         this.webSocketManager = webSocketManager;
         this.executor = Executors.newSingleThreadExecutor();
         
+        // Create observer instance for proper cleanup
+        this.webSocketMessageObserver = message -> {
+            if (message != null) {
+                String type = message.getType();
+                if (WebSocketMessageType.NEW_QUESTION.equals(type)) {
+                    newQuestion.postValue(message);
+                }
+            }
+        };
+        
         observeWebSocketMessages();
     }
     
     private void observeWebSocketMessages() {
         // Observe WebSocket messages for tutor-specific handling
-        webSocketManager.getIncomingMessage().observeForever(message -> {
-            if (message != null) {
-                String type = message.getType();
-                if ("NEW_QUESTION".equals(type)) {
-                    newQuestion.postValue(message);
-                }
-            }
-        });
+        webSocketManager.getIncomingMessage().observeForever(webSocketMessageObserver);
     }
     
     public LiveData<java.util.List<QuestionEntity>> getPendingQuestions() {
-        return questionDao.getQuestionsByStatus("pending");
+        return questionDao.getQuestionsByStatus(QuestionStatus.PENDING);
     }
     
     public LiveData<java.util.List<QuestionEntity>> getInProgressQuestions() {
         // 只显示当前老师正在回答的问题
         long tutorId = prefsManager.getUserId();
-        return questionDao.getQuestionsByTutorAndStatus(tutorId, "in_progress");
+        return questionDao.getQuestionsByTutorAndStatus(tutorId, QuestionStatus.IN_PROGRESS);
     }
     
     public LiveData<java.util.List<QuestionEntity>> getClosedQuestions() {
         // 只显示当前老师已完成的问题
         long tutorId = prefsManager.getUserId();
-        return questionDao.getQuestionsByTutorAndStatus(tutorId, "closed");
+        return questionDao.getQuestionsByTutorAndStatus(tutorId, QuestionStatus.CLOSED);
     }
     
     public LiveData<Boolean> isConnected() {
@@ -134,7 +142,14 @@ public class TutorViewModel extends ViewModel {
         String token = prefsManager.getToken();
         long userId = prefsManager.getUserId();
         
-        questionRepository.syncQuestionsFromServer(token, userId, "tutor", 1, 20, false, new QuestionRepository.SyncCallback() {
+        questionRepository.syncQuestionsFromServer(
+            token, 
+            userId, 
+            "tutor", 
+            com.dowdah.asknow.constants.AppConstants.DEFAULT_START_PAGE,
+            com.dowdah.asknow.constants.AppConstants.DEFAULT_QUESTIONS_PAGE_SIZE,
+            false, 
+            new QuestionRepository.SyncCallback() {
             @Override
             public void onSuccess(int syncedCount) {
                 isSyncing.postValue(false);
@@ -170,7 +185,14 @@ public class TutorViewModel extends ViewModel {
         String token = prefsManager.getToken();
         long userId = prefsManager.getUserId();
         
-        questionRepository.syncQuestionsFromServer(token, userId, "tutor", currentPage, 20, true, new QuestionRepository.SyncCallback() {
+        questionRepository.syncQuestionsFromServer(
+            token, 
+            userId, 
+            "tutor", 
+            currentPage,
+            com.dowdah.asknow.constants.AppConstants.DEFAULT_QUESTIONS_PAGE_SIZE,
+            true, 
+            new QuestionRepository.SyncCallback() {
             @Override
             public void onSuccess(int syncedCount) {
                 isLoadingMore.postValue(false);
@@ -195,8 +217,16 @@ public class TutorViewModel extends ViewModel {
     @Override
     protected void onCleared() {
         super.onCleared();
+        
+        // Remove WebSocket observer to prevent memory leak
+        if (webSocketMessageObserver != null) {
+            webSocketManager.getIncomingMessage().removeObserver(webSocketMessageObserver);
+        }
+        
         // Don't disconnect WebSocket - it should stay connected at app level
-        executor.shutdown();
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdown();
+        }
     }
 }
 
