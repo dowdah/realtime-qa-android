@@ -10,6 +10,7 @@ import androidx.lifecycle.MutableLiveData;
 import com.dowdah.asknow.R;
 import com.dowdah.asknow.base.BaseViewModel;
 import com.dowdah.asknow.constants.MessageStatus;
+import com.dowdah.asknow.constants.MessageType;
 import com.dowdah.asknow.constants.QuestionStatus;
 import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.local.dao.MessageDao;
@@ -129,7 +130,7 @@ public class ChatViewModel extends BaseViewModel {
      * @param content 消息内容
      */
     public void sendMessage(long questionId, String content) {
-        sendMessageInternal(questionId, content, "text");
+        sendMessageInternal(questionId, content, MessageType.TEXT);
     }
     
     /**
@@ -139,7 +140,7 @@ public class ChatViewModel extends BaseViewModel {
      * @param imagePath 图片路径（服务器路径，已上传）
      */
     public void sendImageMessage(long questionId, String imagePath) {
-        sendMessageInternal(questionId, imagePath, "image");
+        sendMessageInternal(questionId, imagePath, MessageType.IMAGE);
     }
     
     /**

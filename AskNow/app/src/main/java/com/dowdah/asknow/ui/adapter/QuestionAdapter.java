@@ -228,7 +228,7 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
             tvContent.setText(content != null ? content : "");
             
             String status = question.getStatus();
-            tvStatus.setText(getStatusText(status != null ? status : "pending"));
+            tvStatus.setText(getStatusText(status != null ? status : QuestionStatus.PENDING));
             
             SimpleDateFormat sdf = new SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault());
             tvDate.setText(sdf.format(new Date(question.getCreatedAt())));

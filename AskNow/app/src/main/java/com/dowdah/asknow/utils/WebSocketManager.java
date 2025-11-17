@@ -5,6 +5,7 @@ import android.util.Log;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
+import com.dowdah.asknow.constants.MessageType;
 import com.dowdah.asknow.constants.QuestionStatus;
 import com.dowdah.asknow.constants.WebSocketMessageType;
 import com.dowdah.asknow.data.api.WebSocketClient;
@@ -211,7 +212,7 @@ public class WebSocketManager {
                 String content = data.get("content").getAsString();
                 
                 // 获取消息类型，默认为text
-                String messageType = "text";
+                String messageType = MessageType.TEXT;
                 if (data.has("messageType") && !data.get("messageType").isJsonNull()) {
                     messageType = data.get("messageType").getAsString();
                 }

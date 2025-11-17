@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.dowdah.asknow.R;
+import com.dowdah.asknow.constants.MessageType;
 import com.dowdah.asknow.data.local.entity.MessageEntity;
 import com.dowdah.asknow.databinding.ItemMessageReceivedBinding;
 import com.dowdah.asknow.databinding.ItemMessageSentBinding;
@@ -222,7 +223,7 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         String messageType = message.getMessageType();
         String content = message.getContent();
         
-        if ("image".equals(messageType)) {
+        if (MessageType.IMAGE.equals(messageType)) {
             // 显示图片消息
             textView.setVisibility(View.GONE);
             imageView.setVisibility(View.VISIBLE);

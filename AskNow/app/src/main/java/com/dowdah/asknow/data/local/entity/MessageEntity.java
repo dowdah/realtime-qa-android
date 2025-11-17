@@ -6,6 +6,8 @@ import androidx.room.Ignore;
 import androidx.room.Index;
 import androidx.room.PrimaryKey;
 
+import com.dowdah.asknow.constants.MessageStatus;
+
 @Entity(
     tableName = "messages",
     foreignKeys = @ForeignKey(
@@ -39,7 +41,7 @@ public class MessageEntity {
         this.messageType = messageType;
         this.createdAt = createdAt;
         this.isRead = false; // 默认未读
-        this.sendStatus = "sent"; // 默认已发送
+        this.sendStatus = MessageStatus.SENT; // 默认已发送
     }
 
     // Getters and Setters

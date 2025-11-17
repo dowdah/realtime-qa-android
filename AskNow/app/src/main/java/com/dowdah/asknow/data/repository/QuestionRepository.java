@@ -2,6 +2,7 @@ package com.dowdah.asknow.data.repository;
 
 import android.util.Log;
 
+import com.dowdah.asknow.constants.MessageStatus;
 import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
@@ -310,7 +311,7 @@ public class QuestionRepository {
                                     entity.setMessageType(serverMessage.getMessageType());
                                     entity.setCreatedAt(serverMessage.getCreatedAt());
                                     entity.setRead(serverMessage.isRead()); // 保留已读状态
-                                    entity.setSendStatus("sent"); // 从服务器同步的消息都是已发送状态
+                                    entity.setSendStatus(MessageStatus.SENT); // 从服务器同步的消息都是已发送状态
                                     
                                     messageDao.insert(entity);
                                 }
