@@ -63,11 +63,6 @@
             android:name=".ui.image.ImagePreviewActivity"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.NoActionBar" />
-        
-        <!-- Legacy MainActivity (can be removed if not used) -->
-        <activity
-            android:name=".MainActivity"
-            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

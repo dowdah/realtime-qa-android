@@ -4,11 +4,11 @@ import android.app.Application;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
-import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.dowdah.asknow.R;
+import com.dowdah.asknow.base.BaseViewModel;
 import com.dowdah.asknow.constants.MessageStatus;
 import com.dowdah.asknow.constants.QuestionStatus;
 import com.dowdah.asknow.data.api.ApiService;
@@ -16,16 +16,13 @@ import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
 import com.dowdah.asknow.data.local.entity.MessageEntity;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
-
-import java.util.List;
 import com.dowdah.asknow.data.model.MessageRequest;
 import com.dowdah.asknow.data.model.MessageResponse;
 import com.dowdah.asknow.data.repository.MessageRepository;
 import com.dowdah.asknow.utils.SharedPreferencesManager;
 import com.google.gson.JsonObject;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.inject.Inject;
@@ -44,9 +41,14 @@ import retrofit2.Response;
  * - 消息状态管理：pending（发送中）、sent（已发送）、failed（失败）
  * - 问题状态管理：接受问题、关闭问题
  * - 已读未读管理：标记消息为已读
+ * 
+ * 优化改进：
+ * - 继承 BaseViewModel，复用线程池和错误处理
+ * - 提取统一的消息发送逻辑（sendMessageInternal）
+ * - 提取统一的乐观更新模式（updateQuestionStatusWithOptimisticUpdate）
  */
 @HiltViewModel
-public class ChatViewModel extends AndroidViewModel {
+public class ChatViewModel extends BaseViewModel {
     private static final String TAG = "ChatViewModel";
     
     private final ApiService apiService;
@@ -54,7 +56,6 @@ public class ChatViewModel extends AndroidViewModel {
     private final MessageDao messageDao;
     private final MessageRepository messageRepository;
     private final SharedPreferencesManager prefsManager;
-    private final ExecutorService executor;
     
     // 使用AtomicLong生成唯一的临时消息ID
     private final AtomicLong tempIdGenerator = new AtomicLong(-System.currentTimeMillis());
@@ -70,7 +71,6 @@ public class ChatViewModel extends AndroidViewModel {
     private volatile boolean isClosingQuestion = false;
     private volatile boolean isSendingMessage = false;
     
-    private final MutableLiveData<String> errorMessage = new MutableLiveData<>();
     private final MutableLiveData<Boolean> messageSent = new MutableLiveData<>();
     
     @Inject
@@ -88,7 +88,6 @@ public class ChatViewModel extends AndroidViewModel {
         this.messageDao = messageDao;
         this.messageRepository = messageRepository;
         this.prefsManager = prefsManager;
-        this.executor = Executors.newSingleThreadExecutor();
     }
     
     public LiveData<List<MessageEntity>> getMessagesByQuestionId(long questionId) {
@@ -123,7 +122,35 @@ public class ChatViewModel extends AndroidViewModel {
         });
     }
     
+    /**
+     * 发送文本消息
+     * 
+     * @param questionId 问题ID
+     * @param content 消息内容
+     */
     public void sendMessage(long questionId, String content) {
+        sendMessageInternal(questionId, content, "text");
+    }
+    
+    /**
+     * 发送图片消息
+     * 
+     * @param questionId 问题ID
+     * @param imagePath 图片路径（服务器路径，已上传）
+     */
+    public void sendImageMessage(long questionId, String imagePath) {
+        sendMessageInternal(questionId, imagePath, "image");
+    }
+    
+    /**
+     * 统一的消息发送逻辑（内部方法）
+     * 实现乐观更新模式：先插入临时消息，发送成功后替换为真实消息
+     * 
+     * @param questionId 问题ID
+     * @param content 消息内容
+     * @param messageType 消息类型（text/image）
+     */
+    private void sendMessageInternal(long questionId, String content, String messageType) {
         // 防抖：避免重复发送
         if (isSendingMessage) {
             Log.w(TAG, "Message is already being sent, ignoring duplicate request");
@@ -137,26 +164,26 @@ public class ChatViewModel extends AndroidViewModel {
         long currentTime = System.currentTimeMillis();
         
         // 1. 乐观更新：立即插入本地数据库，状态为 pending
-        executor.execute(() -> {
+        executeInBackground(() -> {
             synchronized (messageLock) {
                 MessageEntity tempEntity = new MessageEntity(
                     questionId,
                     currentUserId,
                     content,
-                    "text",
+                    messageType,
                     currentTime
                 );
                 tempEntity.setId(tempId);
                 tempEntity.setSendStatus(MessageStatus.PENDING);
                 tempEntity.setRead(true); // 自己发送的消息标记为已读
                 messageDao.insert(tempEntity);
-                Log.d(TAG, "Optimistic update: inserted temp message with id=" + tempId);
+                Log.d(TAG, "Optimistic update: inserted temp " + messageType + " message with id=" + tempId);
             }
         });
         
         // 2. 发送 HTTP API
         String token = "Bearer " + prefsManager.getToken();
-        MessageRequest request = new MessageRequest(questionId, content, "text");
+        MessageRequest request = new MessageRequest(questionId, content, messageType);
         
         apiService.sendMessage(token, request).enqueue(new Callback<MessageResponse>() {
             @Override
@@ -165,7 +192,7 @@ public class ChatViewModel extends AndroidViewModel {
                     MessageResponse.MessageData data = response.body().getData();
                     
                     // 3. 替换临时消息为真实消息（使用锁保护，防止竞态条件）
-                    executor.execute(() -> {
+                    executeInBackground(() -> {
                         synchronized (messageLock) {
                             // 删除临时消息
                             messageDao.deleteById(tempId);
@@ -183,167 +210,129 @@ public class ChatViewModel extends AndroidViewModel {
                             realEntity.setRead(true); // 自己发送的消息标记为已读
                             messageDao.insert(realEntity);
                             
-                            Log.d(TAG, "Message sent successfully: replaced temp id=" + tempId + " with real id=" + data.getId());
+                            Log.d(TAG, messageType + " message sent successfully: replaced temp id=" + tempId + " with real id=" + data.getId());
                         }
+                        
+                        // 更新问题的 updatedAt
+                        questionDao.updateUpdatedAt(questionId, data.getCreatedAt());
                     });
                     
                     // 注意：不需要再通过 WebSocket 发送消息
                     // HTTP API 后端已经处理了消息的保存和 WebSocket 推送
                     
-                    isSendingMessage = false; // 重置发送标志
+                    isSendingMessage = false;
                     messageSent.postValue(true);
                 } else {
                     // 4. 标记失败（使用锁保护）
-                    executor.execute(() -> {
-                        synchronized (messageLock) {
-                            messageDao.updateSendStatus(tempId, MessageStatus.FAILED);
-                            Log.e(TAG, "Message send failed: marked temp id=" + tempId + " as failed");
-                        }
-                    });
-                    isSendingMessage = false; // 重置发送标志
-                    errorMessage.postValue(getApplication().getString(R.string.failed_to_send_message));
+                    handleMessageSendFailure(tempId, "Server error: " + response.code());
                 }
             }
             
             @Override
             public void onFailure(Call<MessageResponse> call, Throwable t) {
                 // 5. 标记失败（使用锁保护）
-                executor.execute(() -> {
-                    synchronized (messageLock) {
-                        messageDao.updateSendStatus(tempId, MessageStatus.FAILED);
-                        Log.e(TAG, "Message send error: marked temp id=" + tempId + " as failed", t);
-                    }
-                });
-                isSendingMessage = false; // 重置发送标志
-                errorMessage.postValue(getApplication().getString(R.string.network_error, t.getMessage()));
+                handleMessageSendFailure(tempId, "Network error: " + t.getMessage());
             }
         });
     }
     
     /**
-     * 发送图片消息
-     * @param questionId 问题 ID
-     * @param imagePath 图片路径（服务器路径，已上传）
+     * 处理消息发送失败
+     * 
+     * @param tempId 临时消息ID
+     * @param errorMsg 错误信息
      */
-    public void sendImageMessage(long questionId, String imagePath) {
-        // 防抖：避免重复发送
-        if (isSendingMessage) {
-            Log.w(TAG, "Message is already being sent, ignoring duplicate request");
-            return;
-        }
-        isSendingMessage = true;
-        
-        // 使用AtomicLong生成唯一的临时ID（负数避免与真实ID冲突）
-        final long tempId = tempIdGenerator.decrementAndGet();
-        long currentUserId = prefsManager.getUserId();
-        long currentTime = System.currentTimeMillis();
-        
-        // 1. 乐观更新：立即插入本地数据库，状态为 pending
-        executor.execute(() -> {
+    private void handleMessageSendFailure(long tempId, String errorMsg) {
+        executeInBackground(() -> {
             synchronized (messageLock) {
-                MessageEntity tempEntity = new MessageEntity(
-                    questionId,
-                    currentUserId,
-                    imagePath,
-                    "image",
-                    currentTime
-                );
-                tempEntity.setId(tempId);
-                tempEntity.setSendStatus(MessageStatus.PENDING);
-                tempEntity.setRead(true); // 自己发送的消息标记为已读
-                messageDao.insert(tempEntity);
-                Log.d(TAG, "Optimistic update: inserted temp image message with id=" + tempId);
+                messageDao.updateSendStatus(tempId, MessageStatus.FAILED);
+                Log.e(TAG, "Message send failed: marked temp id=" + tempId + " as failed. " + errorMsg);
             }
         });
-        
-        // 2. 发送 HTTP API
-        String token = "Bearer " + prefsManager.getToken();
-        MessageRequest request = new MessageRequest(questionId, imagePath, "image");
-        
-        apiService.sendMessage(token, request).enqueue(new Callback<MessageResponse>() {
-            @Override
-            public void onResponse(Call<MessageResponse> call, Response<MessageResponse> response) {
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    MessageResponse.MessageData data = response.body().getData();
-                    
-                    // 3. 替换临时消息为真实消息
-                    executor.execute(() -> {
-                        synchronized (messageLock) {
-                            messageDao.deleteById(tempId);
-                            
-                            MessageEntity realEntity = new MessageEntity(
-                                data.getQuestionId(),
-                                data.getSenderId(),
-                                data.getContent(),
-                                data.getMessageType(),
-                                data.getCreatedAt()
-                            );
-                            realEntity.setId(data.getId());
-                            realEntity.setSendStatus(MessageStatus.SENT);
-                            realEntity.setRead(data.isRead());
-                            messageDao.insert(realEntity);
-                            Log.d(TAG, "Image message sent: real id=" + data.getId());
-                        }
-                    });
-                    
-                    isSendingMessage = false;
-                    messageSent.postValue(true);
-                    
-                    // 4. 更新问题的 updatedAt
-                    executor.execute(() -> questionDao.updateUpdatedAt(questionId, data.getCreatedAt()));
-                } else {
-                    // 5. 标记失败
-                    executor.execute(() -> {
-                        synchronized (messageLock) {
-                            messageDao.updateSendStatus(tempId, MessageStatus.FAILED);
-                            Log.e(TAG, "Image message send failed: marked temp id=" + tempId + " as failed");
-                        }
-                    });
-                    isSendingMessage = false;
-                    errorMessage.postValue(getApplication().getString(R.string.failed_to_send_message));
-                }
-            }
-            
-            @Override
-            public void onFailure(Call<MessageResponse> call, Throwable t) {
-                // 5. 标记失败
-                executor.execute(() -> {
-                    synchronized (messageLock) {
-                        messageDao.updateSendStatus(tempId, MessageStatus.FAILED);
-                        Log.e(TAG, "Image message send error: marked temp id=" + tempId + " as failed", t);
-                    }
-                });
-                isSendingMessage = false;
-                errorMessage.postValue(getApplication().getString(R.string.network_error, t.getMessage()));
-            }
-        });
+        isSendingMessage = false;
+        setError(getApplication().getString(R.string.failed_to_send_message));
     }
     
+    /**
+     * 接受问题（教师端功能）
+     * 
+     * @param questionId 问题ID
+     */
     public void acceptQuestion(long questionId) {
-        // 防抖：避免重复接受
-        if (isAcceptingQuestion) {
-            Log.w(TAG, "Question is already being accepted, ignoring duplicate request");
+        updateQuestionStatusWithOptimisticUpdate(
+            questionId,
+            QuestionStatus.IN_PROGRESS,
+            () -> isAcceptingQuestion,
+            (accepting) -> isAcceptingQuestion = accepting,
+            (token, request) -> apiService.acceptQuestion(token, request),
+            R.string.failed_to_accept_question,
+            true // 需要设置 tutorId
+        );
+    }
+    
+    /**
+     * 关闭问题（学生端功能）
+     * 
+     * @param questionId 问题ID
+     */
+    public void closeQuestion(long questionId) {
+        updateQuestionStatusWithOptimisticUpdate(
+            questionId,
+            QuestionStatus.CLOSED,
+            () -> isClosingQuestion,
+            (closing) -> isClosingQuestion = closing,
+            (token, request) -> apiService.closeQuestion(token, request),
+            R.string.failed_to_close_question,
+            false // 不需要设置 tutorId
+        );
+    }
+    
+    /**
+     * 统一的问题状态乐观更新方法
+     * 
+     * @param questionId 问题ID
+     * @param newStatus 新状态
+     * @param isProcessingCheck 检查是否正在处理的函数
+     * @param setProcessing 设置处理状态的函数
+     * @param apiCall API调用函数
+     * @param errorMessageResId 错误消息资源ID
+     * @param updateTutorId 是否需要更新tutorId
+     */
+    private void updateQuestionStatusWithOptimisticUpdate(
+        long questionId,
+        String newStatus,
+        BooleanSupplier isProcessingCheck,
+        BooleanConsumer setProcessing,
+        ApiCallFunction apiCall,
+        int errorMessageResId,
+        boolean updateTutorId
+    ) {
+        // 防抖：避免重复操作
+        if (isProcessingCheck.getAsBoolean()) {
+            Log.w(TAG, "Question status update already in progress, ignoring duplicate request");
             return;
         }
-        isAcceptingQuestion = true;
+        setProcessing.accept(true);
         
-        final long tutorId = prefsManager.getUserId();
+        final long tutorId = updateTutorId ? prefsManager.getUserId() : 0;
         // 保存原始状态用于回滚
         final Long[] originalTutorId = new Long[1];
         final String[] originalStatus = new String[1];
         
         // 1. 乐观更新：立即更新本地数据库（使用锁保护）
-        executor.execute(() -> {
+        executeInBackground(() -> {
             synchronized (questionLock) {
                 QuestionEntity question = questionDao.getQuestionById(questionId);
                 if (question != null) {
                     originalTutorId[0] = question.getTutorId();
                     originalStatus[0] = question.getStatus();
-                    question.setStatus(QuestionStatus.IN_PROGRESS);
-                    question.setTutorId(tutorId);
+                    question.setStatus(newStatus);
+                    if (updateTutorId) {
+                        question.setTutorId(tutorId);
+                    }
                     question.setUpdatedAt(System.currentTimeMillis());
                     questionDao.update(question);
-                    Log.d(TAG, "Optimistic update: accepted question " + questionId);
+                    Log.d(TAG, "Optimistic update: changed question " + questionId + " status to " + newStatus);
                 }
             }
         });
@@ -353,138 +342,80 @@ public class ChatViewModel extends AndroidViewModel {
         JsonObject request = new JsonObject();
         request.addProperty("questionId", questionId);
         
-        apiService.acceptQuestion(token, request).enqueue(new Callback<JsonObject>() {
+        apiCall.call(token, request).enqueue(new Callback<JsonObject>() {
             @Override
             public void onResponse(Call<JsonObject> call, Response<JsonObject> response) {
                 if (response.isSuccessful()) {
                     // 注意：不需要再通过 WebSocket 发送通知
                     // HTTP API 后端已经处理了 WebSocket 广播
-                    isAcceptingQuestion = false; // 重置标志
-                    Log.d(TAG, "Question accepted successfully");
+                    setProcessing.accept(false);
+                    Log.d(TAG, "Question status updated successfully to " + newStatus);
                 } else {
-                    // 3. API失败，回滚本地更新（使用锁保护）
-                    executor.execute(() -> {
-                        synchronized (questionLock) {
-                            QuestionEntity question = questionDao.getQuestionById(questionId);
-                            if (question != null) {
-                                question.setStatus(originalStatus[0] != null ? originalStatus[0] : QuestionStatus.PENDING);
-                                question.setTutorId(originalTutorId[0]);
-                                questionDao.update(question);
-                                Log.e(TAG, "Failed to accept question, rolled back local update");
-                            }
-                        }
-                    });
-                    isAcceptingQuestion = false; // 重置标志
-                    errorMessage.postValue(getApplication().getString(R.string.failed_to_accept_question));
+                    // 3. API失败，回滚本地更新
+                    rollbackQuestionUpdate(questionId, originalStatus[0], originalTutorId[0], "API error: " + response.code());
+                    setProcessing.accept(false);
+                    setError(getApplication().getString(errorMessageResId));
                 }
             }
             
             @Override
             public void onFailure(Call<JsonObject> call, Throwable t) {
-                // 4. 网络失败，回滚本地更新（使用锁保护）
-                executor.execute(() -> {
-                    synchronized (questionLock) {
-                        QuestionEntity question = questionDao.getQuestionById(questionId);
-                        if (question != null) {
-                            question.setStatus(originalStatus[0] != null ? originalStatus[0] : QuestionStatus.PENDING);
-                            question.setTutorId(originalTutorId[0]);
-                            questionDao.update(question);
-                            Log.e(TAG, "Error accepting question, rolled back local update", t);
-                        }
-                    }
-                });
-                isAcceptingQuestion = false; // 重置标志
-                errorMessage.postValue(getApplication().getString(R.string.failed_to_accept_question));
+                // 4. 网络失败，回滚本地更新
+                rollbackQuestionUpdate(questionId, originalStatus[0], originalTutorId[0], "Network error: " + t.getMessage());
+                setProcessing.accept(false);
+                setError(getApplication().getString(errorMessageResId));
             }
         });
     }
     
-    public void closeQuestion(long questionId) {
-        // 防抖：避免重复关闭
-        if (isClosingQuestion) {
-            Log.w(TAG, "Question is already being closed, ignoring duplicate request");
-            return;
-        }
-        isClosingQuestion = true;
-        
-        // 保存原始状态用于回滚
-        final String[] originalStatus = new String[1];
-        
-        // 1. 乐观更新：立即更新本地数据库（使用锁保护）
-        executor.execute(() -> {
+    /**
+     * 回滚问题状态更新
+     * 
+     * @param questionId 问题ID
+     * @param originalStatus 原始状态
+     * @param originalTutorId 原始教师ID
+     * @param errorMsg 错误信息
+     */
+    private void rollbackQuestionUpdate(long questionId, String originalStatus, Long originalTutorId, String errorMsg) {
+        executeInBackground(() -> {
             synchronized (questionLock) {
                 QuestionEntity question = questionDao.getQuestionById(questionId);
-                if (question != null) {
-                    originalStatus[0] = question.getStatus();
-                    question.setStatus(QuestionStatus.CLOSED);
-                    question.setUpdatedAt(System.currentTimeMillis());
+                if (question != null && originalStatus != null) {
+                    question.setStatus(originalStatus);
+                    question.setTutorId(originalTutorId);
                     questionDao.update(question);
-                    Log.d(TAG, "Optimistic update: closed question " + questionId);
+                    Log.e(TAG, "Rolled back question " + questionId + " update due to: " + errorMsg);
                 }
             }
         });
-        
-        // 2. 发送API请求
-        String token = "Bearer " + prefsManager.getToken();
-        JsonObject request = new JsonObject();
-        request.addProperty("questionId", questionId);
-        
-        apiService.closeQuestion(token, request).enqueue(new Callback<JsonObject>() {
-            @Override
-            public void onResponse(Call<JsonObject> call, Response<JsonObject> response) {
-                if (response.isSuccessful()) {
-                    // 注意：不需要再通过 WebSocket 发送通知
-                    // HTTP API 后端已经处理了 WebSocket 推送
-                    isClosingQuestion = false; // 重置标志
-                    Log.d(TAG, "Question closed successfully");
-                } else {
-                    // 3. API失败，回滚本地更新（使用锁保护）
-                    executor.execute(() -> {
-                        synchronized (questionLock) {
-                            QuestionEntity question = questionDao.getQuestionById(questionId);
-                            if (question != null && originalStatus[0] != null) {
-                                question.setStatus(originalStatus[0]);
-                                questionDao.update(question);
-                                Log.e(TAG, "Failed to close question, rolled back local update");
-                            }
-                        }
-                    });
-                    isClosingQuestion = false; // 重置标志
-                    errorMessage.postValue(getApplication().getString(R.string.failed_to_close_question));
-                }
-            }
-            
-            @Override
-            public void onFailure(Call<JsonObject> call, Throwable t) {
-                // 4. 网络失败，回滚本地更新（使用锁保护）
-                executor.execute(() -> {
-                    synchronized (questionLock) {
-                        QuestionEntity question = questionDao.getQuestionById(questionId);
-                        if (question != null && originalStatus[0] != null) {
-                            question.setStatus(originalStatus[0]);
-                            questionDao.update(question);
-                            Log.e(TAG, "Error closing question, rolled back local update", t);
-                        }
-                    }
-                });
-                isClosingQuestion = false; // 重置标志
-                errorMessage.postValue(getApplication().getString(R.string.failed_to_close_question));
-            }
-        });
-    }
-    
-    public LiveData<String> getErrorMessage() {
-        return errorMessage;
     }
     
     public LiveData<Boolean> getMessageSent() {
         return messageSent;
     }
     
-    @Override
-    protected void onCleared() {
-        super.onCleared();
-        executor.shutdown();
+    /**
+     * 函数式接口：布尔值提供者
+     */
+    @FunctionalInterface
+    private interface BooleanSupplier {
+        boolean getAsBoolean();
+    }
+    
+    /**
+     * 函数式接口：布尔值消费者
+     */
+    @FunctionalInterface
+    private interface BooleanConsumer {
+        void accept(boolean value);
+    }
+    
+    /**
+     * 函数式接口：API调用函数
+     */
+    @FunctionalInterface
+    private interface ApiCallFunction {
+        Call<JsonObject> call(String token, JsonObject request);
     }
 }
 

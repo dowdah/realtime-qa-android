@@ -18,6 +18,10 @@ navigation = "2.7.7"
 lifecycle = "2.8.0"
 ksp = "1.9.23-1.0.20"
 photoview = "2.3.0"
+mockito = "5.11.0"
+mockitoKotlin = "5.2.1"
+androidxCore = "1.13.1"
+androidxArchCore = "2.2.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -27,6 +31,13 @@ appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "a
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
 constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
+
+# Test dependencies
+mockito-core = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
+mockito-inline = { group = "org.mockito", name = "mockito-inline", version.ref = "mockito" }
+mockito-kotlin = { group = "org.mockito.kotlin", name = "mockito-kotlin", version.ref = "mockitoKotlin" }
+androidx-core-testing = { group = "androidx.arch.core", name = "core-testing", version.ref = "androidxArchCore" }
+androidx-core = { group = "androidx.core", name = "core", version.ref = "androidxCore" }
 
 # Hilt
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }

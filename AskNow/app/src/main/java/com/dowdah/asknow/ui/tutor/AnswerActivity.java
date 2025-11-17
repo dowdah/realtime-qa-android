@@ -379,8 +379,7 @@ public class AnswerActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         isActivityInForeground = true;
-        // 检查是否有未读消息，只在有未读消息时才标记
-        checkAndMarkMessagesAsRead();
+        // LiveData 观察者会自动处理标记已读消息
     }
     
     @Override
@@ -390,16 +389,8 @@ public class AnswerActivity extends AppCompatActivity {
     }
     
     /**
-     * 检查并标记消息为已读
-     * 只有在有未读消息时才调用 API，避免不必要的网络请求
-     */
-    private void checkAndMarkMessagesAsRead() {
-        markMessagesAsReadIfNeeded();
-    }
-    
-    /**
      * 标记消息为已读（如果有未读消息）
-     * 该方法可以在消息列表更新或界面恢复时调用
+     * 该方法由 LiveData 观察者在界面前台时自动调用
      */
     private void markMessagesAsReadIfNeeded() {
         if (executor != null && !executor.isShutdown()) {

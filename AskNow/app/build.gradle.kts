@@ -96,7 +96,13 @@ dependencies {
     // SwipeRefreshLayout
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     
+    // Unit Testing
     testImplementation(libs.junit)
+    testImplementation(libs.mockito.core)
+    testImplementation(libs.mockito.kotlin)
+    testImplementation(libs.androidx.core.testing)
+    
+    // Instrumented Testing
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
 }

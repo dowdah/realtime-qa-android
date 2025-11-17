@@ -19,7 +19,10 @@ import com.dowdah.asknow.ui.adapter.QuestionAdapter;
 import com.dowdah.asknow.utils.SharedPreferencesManager;
 import com.dowdah.asknow.utils.WebSocketManager;
 
+import java.util.concurrent.ExecutorService;
+
 import javax.inject.Inject;
+import javax.inject.Named;
 
 import dagger.hilt.android.AndroidEntryPoint;
 
@@ -41,6 +44,10 @@ public class QuestionListByStatusFragment extends Fragment {
     
     @Inject
     WebSocketManager webSocketManager;
+    
+    @Inject
+    @Named("io")
+    ExecutorService ioExecutor;
     
     public static QuestionListByStatusFragment newInstance(String status) {
         QuestionListByStatusFragment fragment = new QuestionListByStatusFragment();
@@ -81,7 +88,7 @@ public class QuestionListByStatusFragment extends Fragment {
             Intent intent = new Intent(requireContext(), AnswerActivity.class);
             intent.putExtra("question_id", question.getId());
             startActivity(intent);
-        }, messageDao, currentUserId);
+        }, messageDao, currentUserId, ioExecutor);
         
         LinearLayoutManager layoutManager = new LinearLayoutManager(requireContext());
         binding.recyclerView.setLayoutManager(layoutManager);

@@ -72,9 +72,15 @@ public class WebSocketManager {
     }
     
     public void connect() {
-        if (webSocketClient != null && webSocketClient.isConnected()) {
-            Log.d(TAG, "WebSocket already connected");
-            return;
+        // 严格清理旧实例，防止多个 WebSocket 同时运行
+        if (webSocketClient != null) {
+            if (webSocketClient.isConnected()) {
+                Log.d(TAG, "WebSocket already connected");
+                return;
+            }
+            Log.d(TAG, "Cleaning up old WebSocketClient instance");
+            webSocketClient.disconnect();
+            webSocketClient = null;
         }
         
         long userId = prefsManager.getUserId();
