@@ -4,6 +4,7 @@
 """
 import os
 from pathlib import Path
+from typing import Dict, Any, List
 
 # ============================================================================
 # 应用配置
@@ -33,6 +34,11 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 # Token过期时间（秒）
 ACCESS_TOKEN_EXPIRE_SECONDS = int(os.getenv("ACCESS_TOKEN_EXPIRE_SECONDS", str(86400 * 7)))  # 7天
+# Authorization header前缀
+AUTH_HEADER_PREFIX = "Bearer "
+# 用户/数据删除状态常量
+USER_NOT_DELETED = False
+USER_DELETED = True
 
 # ============================================================================
 # CORS配置
@@ -146,14 +152,24 @@ MSG_QUESTION_NOT_PENDING = "Question is not pending"
 # ============================================================================
 # 初始化配置
 # ============================================================================
-def init_config():
-    """初始化配置，创建必要的目录"""
+def init_config() -> None:
+    """
+    初始化配置，创建必要的目录
+    
+    Returns:
+        None
+    """
     # 创建上传目录
     Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
     
 
-def get_config_info() -> dict:
-    """获取配置信息（用于调试）"""
+def get_config_info() -> Dict[str, Any]:
+    """
+    获取配置信息（用于调试）
+    
+    Returns:
+        Dict[str, Any]: 包含应用配置信息的字典
+    """
     return {
         "app_name": APP_NAME,
         "app_version": APP_VERSION,

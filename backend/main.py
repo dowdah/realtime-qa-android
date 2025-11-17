@@ -1,22 +1,24 @@
+import json
+import logging
+import time
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import List, Optional, Dict, Any
+
 from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Header, Query
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
-from typing import List, Optional
-from contextlib import asynccontextmanager
-import time
-import shutil
-import json
-import logging
-from pathlib import Path
+from sqlalchemy.exc import SQLAlchemyError
 
+import config
 from database import init_db, get_db
 from models import User, Question, Message
 from auth import hash_password, verify_password, create_access_token, decode_access_token
 from websocket_manager import manager
-import config
 
 # 配置日志系统
 log_handlers = []
@@ -59,8 +61,13 @@ app.add_middleware(
 
 # Health check endpoint
 @app.get("/")
-async def health_check():
-    """健康检查端点"""
+async def health_check() -> Dict[str, Any]:
+    """
+    健康检查端点
+    
+    Returns:
+        Dict[str, Any]: 包含状态信息的字典
+    """
     return {
         "status": "ok",
         "message": f"{config.APP_NAME} is running",
@@ -70,7 +77,6 @@ async def health_check():
 
 
 # Pydantic models
-from pydantic import BaseModel
 
 
 class RegisterRequest(BaseModel):
@@ -105,11 +111,22 @@ class MarkReadRequest(BaseModel):
 
 # 依赖注入：从Header获取并验证token
 async def get_token_from_header(authorization: str = Header(...)) -> str:
-    """从请求头中提取token"""
-    if not authorization or not authorization.startswith("Bearer "):
+    """
+    从请求头中提取token
+    
+    Args:
+        authorization: Authorization头部内容
+        
+    Returns:
+        str: JWT令牌
+        
+    Raises:
+        HTTPException: 如果头部格式无效
+    """
+    if not authorization or not authorization.startswith(config.AUTH_HEADER_PREFIX):
         logger.warning("Invalid authorization header format")
         raise HTTPException(status_code=401, detail="Invalid authorization header")
-    return authorization.replace("Bearer ", "")
+    return authorization.replace(config.AUTH_HEADER_PREFIX, "")
 
 
 # 依赖注入：获取当前用户
@@ -117,7 +134,19 @@ async def get_current_user(
     token: str = Depends(get_token_from_header),
     db: AsyncSession = Depends(get_db)
 ) -> User:
-    """验证token并返回当前用户"""
+    """
+    验证token并返回当前用户
+    
+    Args:
+        token: JWT令牌
+        db: 数据库会话
+        
+    Returns:
+        User: 当前用户对象
+        
+    Raises:
+        HTTPException: 如果令牌无效或用户不存在
+    """
     payload = decode_access_token(token)
     
     if not payload:
@@ -131,7 +160,7 @@ async def get_current_user(
     
     result = await db.execute(
         select(User).where(
-            and_(User.id == user_id, User.is_deleted == False)
+            and_(User.id == user_id, User.is_deleted == config.USER_NOT_DELETED)
         )
     )
     user = result.scalar_one_or_none()
@@ -145,7 +174,15 @@ async def get_current_user(
 
 # 文件验证辅助函数
 def validate_image_file(file: UploadFile) -> None:
-    """验证上传的图片文件"""
+    """
+    验证上传的图片文件
+    
+    Args:
+        file: 上传的文件对象
+        
+    Raises:
+        HTTPException: 如果文件类型或扩展名无效
+    """
     # 检查文件类型 - 接受任何image/*类型或精确匹配的类型
     if file.content_type:
         # 检查是否是image类型（允许image/*或image/jpeg等）
@@ -171,13 +208,25 @@ def validate_image_file(file: UploadFile) -> None:
 
 # Auth endpoints
 @app.post("/api/register")
-async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    """用户注册"""
+async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+    """
+    用户注册
+    
+    Args:
+        request: 注册请求数据
+        db: 数据库会话
+        
+    Returns:
+        Dict[str, Any]: 注册结果
+        
+    Raises:
+        HTTPException: 如果注册失败
+    """
     try:
         # Check if username exists
         result = await db.execute(
             select(User).where(
-                and_(User.username == request.username, User.is_deleted == False)
+                and_(User.username == request.username, User.is_deleted == config.USER_NOT_DELETED)
             )
         )
         existing_user = result.scalar_one_or_none()
@@ -186,7 +235,7 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
             logger.info(f"Registration failed: username '{request.username}' already exists")
             return {
                 "success": False,
-                "message": "Username already exists"
+                "message": config.MSG_USERNAME_EXISTS
             }
         
         # Create new user
@@ -196,7 +245,7 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
             password_hash=hashed_pw,
             role=request.role,
             created_at=int(time.time() * 1000),
-            is_deleted=False
+            is_deleted=config.USER_NOT_DELETED
         )
         
         db.add(new_user)
@@ -209,24 +258,40 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
         logger.info(f"User registered successfully: {new_user.username} (ID: {new_user.id})")
         return {
             "success": True,
-            "message": "Registration successful",
+            "message": config.MSG_REGISTRATION_SUCCESSFUL,
             "token": token,
             "user": new_user.to_dict()
         }
+    except SQLAlchemyError as e:
+        logger.error(f"Database error during registration: {str(e)}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Registration failed")
     except Exception as e:
-        logger.error(f"Registration error: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error during registration: {str(e)}", exc_info=True)
         await db.rollback()
         raise HTTPException(status_code=500, detail="Registration failed")
 
 
 @app.post("/api/login")
-async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """用户登录"""
+async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+    """
+    用户登录
+    
+    Args:
+        request: 登录请求数据
+        db: 数据库会话
+        
+    Returns:
+        Dict[str, Any]: 登录结果
+        
+    Raises:
+        HTTPException: 如果登录失败
+    """
     try:
         # Find user
         result = await db.execute(
             select(User).where(
-                and_(User.username == request.username, User.is_deleted == False)
+                and_(User.username == request.username, User.is_deleted == config.USER_NOT_DELETED)
             )
         )
         user = result.scalar_one_or_none()
@@ -235,7 +300,7 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
             logger.warning(f"Login failed for username: {request.username}")
             return {
                 "success": False,
-                "message": "Invalid username or password"
+                "message": config.MSG_INVALID_CREDENTIALS
             }
         
         # Create token
@@ -244,12 +309,15 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
         logger.info(f"User logged in: {user.username} (ID: {user.id})")
         return {
             "success": True,
-            "message": "Login successful",
+            "message": config.MSG_LOGIN_SUCCESSFUL,
             "token": token,
             "user": user.to_dict()
         }
+    except SQLAlchemyError as e:
+        logger.error(f"Database error during login: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Login failed")
     except Exception as e:
-        logger.error(f"Login error: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error during login: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Login failed")
 
 
@@ -262,19 +330,34 @@ async def get_questions(
     page_size: int = Query(config.DEFAULT_QUESTIONS_PAGE_SIZE, ge=1, le=config.MAX_QUESTIONS_PAGE_SIZE, 
                            description=f"每页数量，1-{config.MAX_QUESTIONS_PAGE_SIZE}"),
     db: AsyncSession = Depends(get_db)
-):
-    """获取问题列表（支持分页）"""
+) -> Dict[str, Any]:
+    """
+    获取问题列表（支持分页）
+    
+    Args:
+        current_user: 当前用户
+        status: 问题状态过滤
+        page: 页码
+        page_size: 每页数量
+        db: 数据库会话
+        
+    Returns:
+        Dict[str, Any]: 问题列表和分页信息
+        
+    Raises:
+        HTTPException: 如果查询失败
+    """
     try:
         # 构建基础查询（排除已删除的问题）
-        query = select(Question).where(Question.is_deleted == False)
+        query = select(Question).where(Question.is_deleted == config.USER_NOT_DELETED)
         
         if status:
             query = query.where(Question.status == status)
         else:
-            if current_user.role == "student":
+            if current_user.role == config.ROLE_STUDENT:
                 # 学生只获取自己创建的问题
                 query = query.where(Question.user_id == current_user.id)
-            elif current_user.role == "tutor":
+            elif current_user.role == config.ROLE_TUTOR:
                 # 老师获取自己接取的问题（in_progress和closed状态）
                 query = query.where(Question.tutor_id == current_user.id)
         
@@ -301,8 +384,11 @@ async def get_questions(
                 "totalPages": (total + page_size - 1) // page_size
             }
         }
+    except SQLAlchemyError as e:
+        logger.error(f"Database error fetching questions: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch questions")
     except Exception as e:
-        logger.error(f"Error fetching questions: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error fetching questions: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch questions")
 
 
@@ -311,8 +397,21 @@ async def create_question(
     request: QuestionRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
-):
-    """创建新问题"""
+) -> Dict[str, Any]:
+    """
+    创建新问题
+    
+    Args:
+        request: 问题请求数据
+        current_user: 当前用户
+        db: 数据库会话
+        
+    Returns:
+        Dict[str, Any]: 创建结果
+        
+    Raises:
+        HTTPException: 如果创建失败
+    """
     try:
         current_time = int(time.time() * 1000)
         
@@ -325,10 +424,10 @@ async def create_question(
             user_id=current_user.id,
             content=request.content,
             image_paths=image_paths_json,
-            status="pending",
+            status=config.STATUS_PENDING,
             created_at=current_time,
             updated_at=current_time,
-            is_deleted=False
+            is_deleted=config.USER_NOT_DELETED
         )
         
         db.add(new_question)
@@ -336,16 +435,20 @@ async def create_question(
         await db.refresh(new_question)
         
         # 广播新问题给所有老师
-        await manager.broadcast_to_tutors(new_question.to_ws_message("NEW_QUESTION"))
+        await manager.broadcast_to_tutors(new_question.to_ws_message(config.WS_TYPE_NEW_QUESTION))
         
         logger.info(f"Question created: ID {new_question.id} by user {current_user.id}")
         return {
             "success": True,
-            "message": "Question created successfully",
+            "message": config.MSG_QUESTION_CREATED,
             "question": new_question.to_dict()
         }
+    except SQLAlchemyError as e:
+        logger.error(f"Database error creating question: {str(e)}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create question")
     except Exception as e:
-        logger.error(f"Error creating question: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error creating question: {str(e)}", exc_info=True)
         await db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create question")
 
@@ -356,18 +459,31 @@ async def send_message(
     request: MessageRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
-):
-    """发送消息"""
+) -> Dict[str, Any]:
+    """
+    发送消息
+    
+    Args:
+        request: 消息请求数据
+        current_user: 当前用户
+        db: 数据库会话
+        
+    Returns:
+        Dict[str, Any]: 发送结果
+        
+    Raises:
+        HTTPException: 如果发送失败
+    """
     try:
         # 检查问题是否存在且未删除
         result = await db.execute(
             select(Question).where(
-                and_(Question.id == request.questionId, Question.is_deleted == False)
+                and_(Question.id == request.questionId, Question.is_deleted == config.USER_NOT_DELETED)
             )
         )
         question = result.scalar_one_or_none()
         if not question:
-            raise HTTPException(status_code=404, detail="Question not found")
+            raise HTTPException(status_code=404, detail=config.MSG_QUESTION_NOT_FOUND)
         
         # 创建消息
         new_message = Message(
@@ -377,7 +493,7 @@ async def send_message(
             message_type=request.messageType,
             created_at=int(time.time() * 1000),
             is_read=False,
-            is_deleted=False
+            is_deleted=config.USER_NOT_DELETED
         )
         
         db.add(new_message)
@@ -389,21 +505,25 @@ async def send_message(
         await db.refresh(new_message)
         
         # 通过 WebSocket 发送消息到对方（学生发给老师，老师发给学生）
-        if current_user.role == "student" and question.tutor_id:
+        if current_user.role == config.ROLE_STUDENT and question.tutor_id:
             await manager.send_personal_message(new_message.to_ws_message(), question.tutor_id)
-        elif current_user.role == "tutor" and question.user_id:
+        elif current_user.role == config.ROLE_TUTOR and question.user_id:
             await manager.send_personal_message(new_message.to_ws_message(), question.user_id)
         
         logger.info(f"Message sent: ID {new_message.id} for question {question.id}")
         return {
             "success": True,
-            "message": "Message sent successfully",
+            "message": config.MSG_MESSAGE_SENT,
             "data": new_message.to_dict()
         }
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error sending message: {str(e)}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to send message")
     except Exception as e:
-        logger.error(f"Error sending message: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error sending message: {str(e)}", exc_info=True)
         await db.rollback()
         raise HTTPException(status_code=500, detail="Failed to send message")
 
@@ -416,18 +536,33 @@ async def get_messages(
                            description=f"每页数量，1-{config.MAX_MESSAGES_PAGE_SIZE}"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
-):
-    """获取消息列表（支持分页）"""
+) -> Dict[str, Any]:
+    """
+    获取消息列表（支持分页）
+    
+    Args:
+        questionId: 问题ID
+        page: 页码
+        page_size: 每页数量
+        current_user: 当前用户
+        db: 数据库会话
+        
+    Returns:
+        Dict[str, Any]: 消息列表和分页信息
+        
+    Raises:
+        HTTPException: 如果查询失败
+    """
     try:
         # 验证问题是否存在且未删除
         question_result = await db.execute(
             select(Question).where(
-                and_(Question.id == questionId, Question.is_deleted == False)
+                and_(Question.id == questionId, Question.is_deleted == config.USER_NOT_DELETED)
             )
         )
         question = question_result.scalar_one_or_none()
         if not question:
-            raise HTTPException(status_code=404, detail="Question not found")
+            raise HTTPException(status_code=404, detail=config.MSG_QUESTION_NOT_FOUND)
         
         # 验证用户权限（只有问题的创建者或接受者可以查看消息）
         if current_user.id != question.user_id and current_user.id != question.tutor_id:
@@ -435,7 +570,7 @@ async def get_messages(
         
         # 构建查询（排除已删除的消息）
         query = select(Message).where(
-            and_(Message.question_id == questionId, Message.is_deleted == False)
+            and_(Message.question_id == questionId, Message.is_deleted == config.USER_NOT_DELETED)
         )
         
         # 获取总数
@@ -466,8 +601,11 @@ async def get_messages(
         }
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error fetching messages: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch messages")
     except Exception as e:
-        logger.error(f"Error fetching messages: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error fetching messages: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch messages")
 
 
@@ -476,18 +614,31 @@ async def mark_messages_as_read(
     request: MarkReadRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
-):
-    """标记消息为已读"""
+) -> Dict[str, Any]:
+    """
+    标记消息为已读
+    
+    Args:
+        request: 标记已读请求
+        current_user: 当前用户
+        db: 数据库会话
+        
+    Returns:
+        Dict[str, Any]: 标记结果
+        
+    Raises:
+        HTTPException: 如果操作失败
+    """
     try:
         # 验证问题是否存在且未删除
         question_result = await db.execute(
             select(Question).where(
-                and_(Question.id == request.questionId, Question.is_deleted == False)
+                and_(Question.id == request.questionId, Question.is_deleted == config.USER_NOT_DELETED)
             )
         )
         question = question_result.scalar_one_or_none()
         if not question:
-            raise HTTPException(status_code=404, detail="Question not found")
+            raise HTTPException(status_code=404, detail=config.MSG_QUESTION_NOT_FOUND)
         
         # 验证用户权限（只有问题的创建者或接受者可以标记消息为已读）
         if current_user.id != question.user_id and current_user.id != question.tutor_id:
@@ -500,7 +651,7 @@ async def mark_messages_as_read(
                     Message.question_id == request.questionId,
                     Message.sender_id != current_user.id,
                     Message.is_read == False,
-                    Message.is_deleted == False
+                    Message.is_deleted == config.USER_NOT_DELETED
                 )
             )
         )
@@ -520,8 +671,12 @@ async def mark_messages_as_read(
         }
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error marking messages as read: {str(e)}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to mark messages as read")
     except Exception as e:
-        logger.error(f"Error marking messages as read: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error marking messages as read: {str(e)}", exc_info=True)
         await db.rollback()
         raise HTTPException(status_code=500, detail="Failed to mark messages as read")
 
@@ -532,26 +687,39 @@ async def accept_question(
     request: QuestionActionRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
-):
-    """老师接受问题"""
+) -> Dict[str, Any]:
+    """
+    老师接受问题
+    
+    Args:
+        request: 问题操作请求
+        current_user: 当前用户
+        db: 数据库会话
+        
+    Returns:
+        Dict[str, Any]: 操作结果
+        
+    Raises:
+        HTTPException: 如果操作失败
+    """
     try:
-        if current_user.role != "tutor":
-            raise HTTPException(status_code=403, detail="Only tutors can accept questions")
+        if current_user.role != config.ROLE_TUTOR:
+            raise HTTPException(status_code=403, detail=config.MSG_ONLY_TUTORS_CAN_ACCEPT)
         
         result = await db.execute(
             select(Question).where(
-                and_(Question.id == request.questionId, Question.is_deleted == False)
+                and_(Question.id == request.questionId, Question.is_deleted == config.USER_NOT_DELETED)
             )
         )
         question = result.scalar_one_or_none()
         
         if not question:
-            raise HTTPException(status_code=404, detail="Question not found")
+            raise HTTPException(status_code=404, detail=config.MSG_QUESTION_NOT_FOUND)
         
-        if question.status != "pending":
-            raise HTTPException(status_code=400, detail="Question is not pending")
+        if question.status != config.STATUS_PENDING:
+            raise HTTPException(status_code=400, detail=config.MSG_QUESTION_NOT_PENDING)
         
-        question.status = "in_progress"
+        question.status = config.STATUS_IN_PROGRESS
         question.tutor_id = current_user.id
         question.updated_at = int(time.time() * 1000)
         
@@ -559,7 +727,7 @@ async def accept_question(
         await db.refresh(question)
         
         # 广播问题状态更新到相关用户（学生和老师）
-        ws_message = question.to_ws_message("QUESTION_UPDATED")
+        ws_message = question.to_ws_message(config.WS_TYPE_QUESTION_UPDATED)
         
         # 发送给学生
         await manager.send_personal_message(ws_message, question.user_id)
@@ -569,13 +737,17 @@ async def accept_question(
         logger.info(f"Question {question.id} accepted by tutor {current_user.id}")
         return {
             "success": True,
-            "message": "Question accepted",
+            "message": config.MSG_QUESTION_ACCEPTED,
             "question": question.to_dict(full=False)
         }
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error accepting question: {str(e)}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to accept question")
     except Exception as e:
-        logger.error(f"Error accepting question: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error accepting question: {str(e)}", exc_info=True)
         await db.rollback()
         raise HTTPException(status_code=500, detail="Failed to accept question")
 
@@ -585,34 +757,47 @@ async def close_question(
     request: QuestionActionRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
-):
-    """关闭问题"""
+) -> Dict[str, Any]:
+    """
+    关闭问题
+    
+    Args:
+        request: 问题操作请求
+        current_user: 当前用户
+        db: 数据库会话
+        
+    Returns:
+        Dict[str, Any]: 操作结果
+        
+    Raises:
+        HTTPException: 如果操作失败
+    """
     try:
         result = await db.execute(
             select(Question).where(
-                and_(Question.id == request.questionId, Question.is_deleted == False)
+                and_(Question.id == request.questionId, Question.is_deleted == config.USER_NOT_DELETED)
             )
         )
         question = result.scalar_one_or_none()
         
         if not question:
-            raise HTTPException(status_code=404, detail="Question not found")
+            raise HTTPException(status_code=404, detail=config.MSG_QUESTION_NOT_FOUND)
         
         # 只有老师或者学生本人可以关闭问题
-        if current_user.role == "tutor" and question.tutor_id != current_user.id:
+        if current_user.role == config.ROLE_TUTOR and question.tutor_id != current_user.id:
             raise HTTPException(status_code=403, detail="You are not assigned to this question")
         
-        if current_user.role == "student" and question.user_id != current_user.id:
+        if current_user.role == config.ROLE_STUDENT and question.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="You can only close your own questions")
         
-        question.status = "closed"
+        question.status = config.STATUS_CLOSED
         question.updated_at = int(time.time() * 1000)
         
         await db.commit()
         await db.refresh(question)
         
         # 广播问题状态更新到相关用户
-        ws_message = question.to_ws_message("QUESTION_UPDATED")
+        ws_message = question.to_ws_message(config.WS_TYPE_QUESTION_UPDATED)
         
         # 发送给学生
         await manager.send_personal_message(ws_message, question.user_id)
@@ -623,13 +808,17 @@ async def close_question(
         logger.info(f"Question {question.id} closed by user {current_user.id}")
         return {
             "success": True,
-            "message": "Question closed",
+            "message": config.MSG_QUESTION_CLOSED,
             "question": question.to_dict(full=False)
         }
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error closing question: {str(e)}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to close question")
     except Exception as e:
-        logger.error(f"Error closing question: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error closing question: {str(e)}", exc_info=True)
         await db.rollback()
         raise HTTPException(status_code=500, detail="Failed to close question")
 
@@ -640,8 +829,21 @@ async def upload_image(
     image: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
-):
-    """上传图片文件"""
+) -> Dict[str, Any]:
+    """
+    上传图片文件
+    
+    Args:
+        image: 上传的图片文件
+        current_user: 当前用户
+        db: 数据库会话
+        
+    Returns:
+        Dict[str, Any]: 上传结果
+        
+    Raises:
+        HTTPException: 如果上传失败
+    """
     try:
         # 验证文件
         validate_image_file(image)
@@ -679,20 +881,35 @@ async def upload_image(
         logger.info(f"Image uploaded: {relative_path} by user {current_user.id} ({file_size} bytes)")
         return {
             "success": True,
-            "message": "Image uploaded successfully",
+            "message": config.MSG_IMAGE_UPLOADED,
             "imagePath": relative_path
         }
     except HTTPException:
         raise
+    except (IOError, OSError) as e:
+        logger.error(f"File system error uploading image: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to upload image")
     except Exception as e:
-        logger.error(f"Error uploading image: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error uploading image: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to upload image")
 
 
 # Serve uploaded images
 @app.get("/uploads/{user_id}/{filename}")
-async def get_image(user_id: int, filename: str):
-    """获取上传的图片"""
+async def get_image(user_id: int, filename: str) -> FileResponse:
+    """
+    获取上传的图片
+    
+    Args:
+        user_id: 用户ID
+        filename: 文件名
+        
+    Returns:
+        FileResponse: 图片文件响应
+        
+    Raises:
+        HTTPException: 如果文件不存在或无效
+    """
     try:
         # 验证文件名安全性
         if ".." in filename or "/" in filename or "\\" in filename:
@@ -712,14 +929,23 @@ async def get_image(user_id: int, filename: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error serving image: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error serving image: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to serve image")
 
 
 # WebSocket endpoint
 @app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: int):
-    """WebSocket连接端点"""
+async def websocket_endpoint(websocket: WebSocket, user_id: int) -> None:
+    """
+    WebSocket连接端点
+    
+    Args:
+        websocket: WebSocket连接对象
+        user_id: 用户ID
+        
+    Returns:
+        None
+    """
     # Get user role from query params or database
     db_gen = get_db()
     db = await anext(db_gen)
@@ -727,7 +953,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
     # 先查询用户，但必须先accept才能正确关闭连接
     try:
         result = await db.execute(
-            select(User).where(and_(User.id == user_id, User.is_deleted == False))
+            select(User).where(and_(User.id == user_id, User.is_deleted == config.USER_NOT_DELETED))
         )
         user = result.scalar_one_or_none()
         
@@ -742,16 +968,16 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
         logger.info(f"WebSocket connected: user {user_id} ({user.role})")
         
         # If tutor connects, send all pending questions
-        if user.role == "tutor":
+        if user.role == config.ROLE_TUTOR:
             result = await db.execute(
                 select(Question).where(
-                    and_(Question.status == "pending", Question.is_deleted == False)
+                    and_(Question.status == config.STATUS_PENDING, Question.is_deleted == config.USER_NOT_DELETED)
                 ).order_by(Question.created_at.asc())
             )
             pending_questions = result.scalars().all()
             
             for question in pending_questions:
-                await manager.send_personal_message(question.to_ws_message("NEW_QUESTION"), user_id)
+                await manager.send_personal_message(question.to_ws_message(config.WS_TYPE_NEW_QUESTION), user_id)
             
             if pending_questions:
                 logger.info(f"Sent {len(pending_questions)} pending questions to tutor {user_id}")
@@ -785,6 +1011,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
         except WebSocketDisconnect:
             manager.disconnect(user_id)
             logger.info(f"WebSocket disconnected: user {user_id}")
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error(f"WebSocket message parse error for user {user_id}: {str(e)}", exc_info=True)
+            manager.disconnect(user_id)
         except Exception as e:
             logger.error(f"WebSocket error for user {user_id}: {str(e)}", exc_info=True)
             manager.disconnect(user_id)

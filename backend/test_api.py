@@ -13,10 +13,11 @@
 import asyncio
 import json
 import time
+from datetime import datetime
+from typing import Optional, Dict, Any, Tuple
+
 import requests
 import websockets
-from datetime import datetime
-from typing import Optional, Dict, Any
 
 # 配置
 BASE_URL = "http://localhost:8000"
@@ -31,25 +32,25 @@ class Colors:
     BOLD = '\033[1m'
     END = '\033[0m'
 
-def print_header(text: str):
+def print_header(text: str) -> None:
     """打印测试标题"""
     print(f"\n{Colors.BOLD}{Colors.BLUE}{'=' * 60}{Colors.END}")
     print(f"{Colors.BOLD}{Colors.BLUE}{text:^60}{Colors.END}")
     print(f"{Colors.BOLD}{Colors.BLUE}{'=' * 60}{Colors.END}\n")
 
-def print_success(text: str):
+def print_success(text: str) -> None:
     """打印成功信息"""
     print(f"{Colors.GREEN}✅ {text}{Colors.END}")
 
-def print_error(text: str):
+def print_error(text: str) -> None:
     """打印错误信息"""
     print(f"{Colors.RED}❌ {text}{Colors.END}")
 
-def print_info(text: str):
+def print_info(text: str) -> None:
     """打印信息"""
     print(f"{Colors.YELLOW}ℹ️  {text}{Colors.END}")
 
-def print_result(test_name: str, passed: bool, details: str = ""):
+def print_result(test_name: str, passed: bool, details: str = "") -> None:
     """打印测试结果"""
     status = "通过" if passed else "失败"
     color = Colors.GREEN if passed else Colors.RED
@@ -61,17 +62,17 @@ def print_result(test_name: str, passed: bool, details: str = ""):
 class APITester:
     """API 测试类"""
     
-    def __init__(self):
-        self.base_url = BASE_URL
-        self.ws_url = WS_URL
-        self.student_token = None
-        self.tutor_token = None
-        self.student_id = None
-        self.tutor_id = None
-        self.test_question_id = None
-        self.test_results = []
+    def __init__(self) -> None:
+        self.base_url: str = BASE_URL
+        self.ws_url: str = WS_URL
+        self.student_token: Optional[str] = None
+        self.tutor_token: Optional[str] = None
+        self.student_id: Optional[int] = None
+        self.tutor_id: Optional[int] = None
+        self.test_question_id: Optional[int] = None
+        self.test_results: list = []
         
-    def add_result(self, test_name: str, passed: bool, details: str = ""):
+    def add_result(self, test_name: str, passed: bool, details: str = "") -> None:
         """记录测试结果"""
         self.test_results.append({
             "test": test_name,
@@ -110,7 +111,7 @@ class APITester:
         
         return None
     
-    def test_login_user(self, username: str, password: str) -> Optional[str]:
+    def test_login_user(self, username: str, password: str) -> Tuple[Optional[str], Optional[int]]:
         """测试用户登录"""
         print_info(f"测试用户登录: {username}")
         
@@ -150,7 +151,7 @@ class APITester:
                 f"{self.base_url}/api/questions",
                 json={
                     "content": content,
-                    "imagePath": None
+                    "imagePaths": None
                 },
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=5
@@ -391,7 +392,7 @@ class APITester:
         
         return False
     
-    def print_summary(self):
+    def print_summary(self) -> bool:
         """打印测试摘要"""
         print_header("测试结果摘要")
         
@@ -422,7 +423,7 @@ class APITester:
             print(f"{Colors.RED}{Colors.BOLD}⚠️  部分测试失败，请检查{Colors.END}\n")
             return False
 
-async def main():
+async def main() -> int:
     """主测试流程"""
     tester = APITester()
     
