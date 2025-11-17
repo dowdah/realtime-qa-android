@@ -67,6 +67,21 @@ public final class AppConstants {
      */
     public static final long WEBSOCKET_CONNECT_TIMEOUT_MS = 10000;
     
+    /**
+     * WebSocket退避延迟数组（毫秒）
+     */
+    public static final int[] WEBSOCKET_BACKOFF_DELAYS = {1000, 2000, 4000, 8000, 16000, 30000};
+    
+    /**
+     * WebSocket最大重连次数
+     */
+    public static final int WEBSOCKET_MAX_RETRY_COUNT = 10;
+    
+    /**
+     * WebSocket正常关闭代码
+     */
+    public static final int WEBSOCKET_NORMAL_CLOSURE_CODE = 1000;
+    
     // ==================== 文件上传相关 ====================
     
     /**
@@ -89,6 +104,11 @@ public final class AppConstants {
      */
     public static final int IMAGE_MAX_HEIGHT = 1920;
     
+    /**
+     * 图片缩略图尺寸（dp）
+     */
+    public static final int IMAGE_THUMBNAIL_SIZE_DP = 120;
+    
     // ==================== 缓存相关 ====================
     
     /**
@@ -100,6 +120,11 @@ public final class AppConstants {
      * 缓存过期时间（毫秒）24小时
      */
     public static final long CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000;
+    
+    /**
+     * 同步初始延迟（毫秒）
+     */
+    public static final long SYNC_INITIAL_DELAY_MS = 300;
     
     // ==================== UI相关 ====================
     

@@ -11,10 +11,14 @@ import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
+/**
+ * WebSocket客户端
+ * 管理WebSocket连接，提供自动重连功能
+ */
 public class WebSocketClient {
     private static final String TAG = "WebSocketClient";
-    private static final int[] BACKOFF_DELAYS = {1000, 2000, 4000, 8000, 16000, 30000}; // milliseconds
-    private static final int MAX_RETRY_COUNT = 10; // 最多重连10次
+    private static final int[] BACKOFF_DELAYS = com.dowdah.asknow.constants.AppConstants.WEBSOCKET_BACKOFF_DELAYS;
+    private static final int MAX_RETRY_COUNT = com.dowdah.asknow.constants.AppConstants.WEBSOCKET_MAX_RETRY_COUNT;
     
     private WebSocket webSocket;
     private final OkHttpClient client;
@@ -23,10 +27,32 @@ public class WebSocketClient {
     private int retryCount = 0;
     private boolean isManuallyDisconnected = false;
     
+    /**
+     * WebSocket回调接口
+     */
     public interface WebSocketCallback {
+        /**
+         * 连接建立时回调
+         */
         void onConnected();
+        
+        /**
+         * 收到消息时回调
+         * 
+         * @param message WebSocket消息
+         */
         void onMessage(WebSocketMessage message);
+        
+        /**
+         * 连接断开时回调
+         */
         void onDisconnected();
+        
+        /**
+         * 发生错误时回调
+         * 
+         * @param error 错误信息
+         */
         void onError(Throwable error);
     }
     
@@ -72,7 +98,7 @@ public class WebSocketClient {
             @Override
             public void onClosing(WebSocket webSocket, int code, String reason) {
                 Log.d(TAG, "WebSocket closing: " + reason);
-                webSocket.close(1000, null);
+                webSocket.close(com.dowdah.asknow.constants.AppConstants.WEBSOCKET_NORMAL_CLOSURE_CODE, null);
             }
             
             @Override
@@ -103,7 +129,7 @@ public class WebSocketClient {
     public void disconnect() {
         isManuallyDisconnected = true;
         if (webSocket != null) {
-            webSocket.close(1000, "Manual disconnect");
+            webSocket.close(com.dowdah.asknow.constants.AppConstants.WEBSOCKET_NORMAL_CLOSURE_CODE, "Manual disconnect");
             webSocket = null;
         }
     }
@@ -151,7 +177,8 @@ public class WebSocketClient {
     }
     
     /**
-     * 重置重连计数器（当手动重连时使用）
+     * 重置重连计数器
+     * 当手动重连时使用
      */
     public void resetRetryCount() {
         retryCount = 0;

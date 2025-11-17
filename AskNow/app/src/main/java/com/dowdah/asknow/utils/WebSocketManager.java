@@ -158,9 +158,9 @@ public class WebSocketManager {
         } else if (WebSocketMessageType.QUESTION_CLOSED.equals(type)) {
             // 向后兼容
             handleQuestionClosed(message);
-        } else if (WebSocketMessageType.NEW_QUESTION.equals(type) && "tutor".equals(role)) {
+        } else if (WebSocketMessageType.NEW_QUESTION.equals(type) && com.dowdah.asknow.constants.AppConstants.ROLE_TUTOR.equals(role)) {
             handleNewQuestion(message);
-        } else if (WebSocketMessageType.NEW_ANSWER.equals(type) && "student".equals(role)) {
+        } else if (WebSocketMessageType.NEW_ANSWER.equals(type) && com.dowdah.asknow.constants.AppConstants.ROLE_STUDENT.equals(role)) {
             // 向后兼容
         }
     }

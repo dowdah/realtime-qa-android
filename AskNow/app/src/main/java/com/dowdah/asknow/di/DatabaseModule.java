@@ -21,6 +21,10 @@ import dagger.hilt.InstallIn;
 import dagger.hilt.android.qualifiers.ApplicationContext;
 import dagger.hilt.components.SingletonComponent;
 
+/**
+ * 数据库模块
+ * 提供数据库相关的依赖注入（AppDatabase、各种DAO等）
+ */
 @Module
 @InstallIn(SingletonComponent.class)
 public class DatabaseModule {

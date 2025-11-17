@@ -48,7 +48,7 @@ public class TutorMainActivity extends AppCompatActivity {
         // 延迟同步，避免阻塞主线程初始化
         binding.getRoot().postDelayed(() -> {
             viewModel.syncQuestionsFromServer();
-        }, 300);
+        }, com.dowdah.asknow.constants.AppConstants.SYNC_INITIAL_DELAY_MS);
     }
     
     private void setupToolbar() {

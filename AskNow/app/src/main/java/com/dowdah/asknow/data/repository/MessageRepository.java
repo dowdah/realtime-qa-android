@@ -7,6 +7,9 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import com.dowdah.asknow.data.api.WebSocketClient;
 import com.dowdah.asknow.data.local.dao.PendingMessageDao;
 import com.dowdah.asknow.data.local.entity.PendingMessageEntity;
@@ -53,12 +56,12 @@ public class MessageRepository {
     
     @Inject
     public MessageRepository(
-        @ApplicationContext Context context, 
-        PendingMessageDao pendingMessageDao,
-        com.dowdah.asknow.data.local.dao.MessageDao messageDao,
-        com.dowdah.asknow.data.api.ApiService apiService,
-        @javax.inject.Named("single") ExecutorService executor,
-        Gson gson
+        @NonNull @ApplicationContext Context context, 
+        @NonNull PendingMessageDao pendingMessageDao,
+        @NonNull com.dowdah.asknow.data.local.dao.MessageDao messageDao,
+        @NonNull com.dowdah.asknow.data.api.ApiService apiService,
+        @NonNull @javax.inject.Named("single") ExecutorService executor,
+        @NonNull Gson gson
     ) {
         this.context = context;
         this.pendingMessageDao = pendingMessageDao;
@@ -71,21 +74,26 @@ public class MessageRepository {
         checkNetworkStatus();
     }
     
-    public void setWebSocketClient(WebSocketClient client) {
+    public void setWebSocketClient(@Nullable WebSocketClient client) {
         this.webSocketClient = client;
     }
     
     /**
      * 设置网络恢复监听器
+     * 
+     * @param listener 网络恢复监听器
      */
-    public void setNetworkAvailableListener(NetworkAvailableListener listener) {
+    public void setNetworkAvailableListener(@Nullable NetworkAvailableListener listener) {
         this.networkAvailableListener = listener;
     }
     
     /**
-     * Send message through WebSocket. If offline, save to database for later.
+     * 通过WebSocket发送消息。如果离线，保存到数据库待后续发送
+     * 
+     * @param messageType 消息类型
+     * @param data 消息数据
      */
-    public void sendMessage(String messageType, JsonObject data) {
+    public void sendMessage(@NonNull String messageType, @NonNull JsonObject data) {
         String messageId = UUID.randomUUID().toString();
         WebSocketMessage message = new WebSocketMessage(
             messageType,
@@ -106,7 +114,11 @@ public class MessageRepository {
     }
     
     /**
-     * Save message to database for offline sending
+     * 保存待发送消息到数据库（用于离线发送）
+     * 
+     * @param messageType 消息类型
+     * @param message 消息对象
+     * @param messageId 消息ID
      */
     private void savePendingMessage(String messageType, WebSocketMessage message, String messageId) {
         executor.execute(() -> {
@@ -124,7 +136,7 @@ public class MessageRepository {
     }
     
     /**
-     * Called when WebSocket connection is established
+     * WebSocket连接建立时调用
      */
     public void onWebSocketConnected() {
         Log.d(TAG, "WebSocket connected, sending pending messages");
@@ -132,7 +144,7 @@ public class MessageRepository {
     }
     
     /**
-     * Send all pending messages from database
+     * 发送数据库中所有待发送消息
      */
     private void sendPendingMessages() {
         executor.execute(() -> {
@@ -165,9 +177,11 @@ public class MessageRepository {
     }
     
     /**
-     * Called when ACK is received from server
+     * 收到服务器ACK确认时调用
+     * 
+     * @param messageId 消息ID
      */
-    public void onMessageAcknowledged(String messageId) {
+    public void onMessageAcknowledged(@NonNull String messageId) {
         executor.execute(() -> {
             PendingMessageEntity entity = pendingMessageDao.getMessageByMessageId(messageId);
             if (entity != null) {
@@ -178,7 +192,7 @@ public class MessageRepository {
     }
     
     /**
-     * Register network callback to monitor connectivity
+     * 注册网络回调以监控网络连接状态
      */
     private void registerNetworkCallback() {
         ConnectivityManager connectivityManager = 
@@ -211,7 +225,7 @@ public class MessageRepository {
     }
     
     /**
-     * Check current network status
+     * 检查当前网络状态
      */
     private void checkNetworkStatus() {
         ConnectivityManager connectivityManager = 
@@ -230,7 +244,7 @@ public class MessageRepository {
     }
     
     /**
-     * Called when network becomes available
+     * 网络恢复可用时调用
      * 通知监听器而不是直接连接，避免重复连接
      */
     private void onNetworkAvailable() {
@@ -245,7 +259,9 @@ public class MessageRepository {
     }
     
     /**
-     * Get count of pending messages
+     * 获取待发送消息数量
+     * 
+     * @return 待发送消息数量
      */
     public int getPendingMessageCount() {
         try {
@@ -257,8 +273,13 @@ public class MessageRepository {
     }
     
     /**
-     * 获取指定问题的未读消息数量
+     * 获取指定问题的未读消息数量（LiveData）
+     * 
+     * @param questionId 问题ID
+     * @param currentUserId 当前用户ID
+     * @return 未读消息数量的LiveData
      */
+    @NonNull
     public androidx.lifecycle.LiveData<Integer> getUnreadMessageCount(long questionId, long currentUserId) {
         return messageDao.getUnreadMessageCountLive(questionId, currentUserId);
     }
@@ -271,7 +292,7 @@ public class MessageRepository {
      * @param currentUserId 当前用户ID
      * @param callback 回调接口
      */
-    public void getUnreadMessageCountAsync(long questionId, long currentUserId, UnreadCountCallback callback) {
+    public void getUnreadMessageCountAsync(long questionId, long currentUserId, @Nullable UnreadCountCallback callback) {
         executor.execute(() -> {
             try {
                 int count = messageDao.getUnreadMessageCount(questionId, currentUserId);
@@ -292,13 +313,18 @@ public class MessageRepository {
      */
     public interface UnreadCountCallback {
         void onCountReceived(int count);
-        void onError(String error);
+        void onError(@NonNull String error);
     }
     
     /**
      * 标记指定问题的所有消息为已读
+     * 
+     * @param token 认证令牌
+     * @param questionId 问题ID
+     * @param currentUserId 当前用户ID
+     * @param callback 回调接口
      */
-    public void markMessagesAsRead(String token, long questionId, long currentUserId, MarkReadCallback callback) {
+    public void markMessagesAsRead(@NonNull String token, long questionId, long currentUserId, @Nullable MarkReadCallback callback) {
         executor.execute(() -> {
             try {
                 // 先更新本地数据库
@@ -357,14 +383,19 @@ public class MessageRepository {
      */
     public interface MarkReadCallback {
         void onSuccess();
-        void onError(String error);
+        void onError(@NonNull String error);
     }
     
     /**
      * 带重试机制的标记已读
      * 使用指数退避策略重试失败的网络请求
+     * 
+     * @param token 认证令牌
+     * @param questionId 问题ID
+     * @param currentUserId 当前用户ID
+     * @param callback 回调接口
      */
-    public void markMessagesAsReadWithRetry(String token, long questionId, long currentUserId, MarkReadCallback callback) {
+    public void markMessagesAsReadWithRetry(@NonNull String token, long questionId, long currentUserId, @Nullable MarkReadCallback callback) {
         markMessagesAsReadWithRetry(token, questionId, currentUserId, callback, 0);
     }
     
@@ -440,8 +471,8 @@ public class MessageRepository {
     }
     
     /**
-     * Clean up resources to prevent memory leaks
-     * Should be called when the repository is no longer needed
+     * 清理资源以防止内存泄漏
+     * 当Repository不再需要时应调用此方法
      */
     public void cleanup() {
         // Unregister network callback

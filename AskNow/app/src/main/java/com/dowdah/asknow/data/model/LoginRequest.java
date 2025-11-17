@@ -1,5 +1,10 @@
 package com.dowdah.asknow.data.model;
 
+import androidx.annotation.NonNull;
+
+/**
+ * 登录请求数据模型
+ */
 public class LoginRequest {
     private String username;
     private String password;

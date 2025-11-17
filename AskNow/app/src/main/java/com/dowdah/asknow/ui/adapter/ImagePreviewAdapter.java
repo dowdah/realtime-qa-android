@@ -7,10 +7,11 @@ import android.view.ViewGroup;
 import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.bumptech.glide.Glide;
 import com.dowdah.asknow.R;
+import com.dowdah.asknow.utils.ImageBindingHelper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,39 +25,76 @@ public class ImagePreviewAdapter extends RecyclerView.Adapter<ImagePreviewAdapte
     private OnImageRemoveListener removeListener;
     private OnImageClickListener clickListener;
     
+    /**
+     * 图片移除监听器接口
+     */
     public interface OnImageRemoveListener {
         void onImageRemove(int position);
     }
     
+    /**
+     * 图片点击监听器接口
+     */
     public interface OnImageClickListener {
-        void onImageClick(int position, Uri imageUri);
+        void onImageClick(int position, @NonNull Uri imageUri);
     }
     
     public ImagePreviewAdapter() {
     }
     
-    public void setRemoveListener(OnImageRemoveListener listener) {
+    /**
+     * 设置图片移除监听器
+     * 
+     * @param listener 图片移除监听器
+     */
+    public void setRemoveListener(@Nullable OnImageRemoveListener listener) {
         this.removeListener = listener;
     }
     
-    public void setClickListener(OnImageClickListener listener) {
+    /**
+     * 设置图片点击监听器
+     * 
+     * @param listener 图片点击监听器
+     */
+    public void setClickListener(@Nullable OnImageClickListener listener) {
         this.clickListener = listener;
     }
     
-    public void setImages(List<Uri> images) {
+    /**
+     * 设置图片列表
+     * 
+     * @param images 图片Uri列表
+     */
+    public void setImages(@NonNull List<Uri> images) {
         this.imageUris = new ArrayList<>(images);
         notifyDataSetChanged();
     }
     
+    /**
+     * 获取图片列表
+     * 
+     * @return 图片Uri列表的副本
+     */
+    @NonNull
     public List<Uri> getImages() {
         return new ArrayList<>(imageUris);
     }
     
-    public void addImage(Uri imageUri) {
+    /**
+     * 添加图片
+     * 
+     * @param imageUri 图片Uri
+     */
+    public void addImage(@NonNull Uri imageUri) {
         imageUris.add(imageUri);
         notifyItemInserted(imageUris.size() - 1);
     }
     
+    /**
+     * 移除图片
+     * 
+     * @param position 图片位置
+     */
     public void removeImage(int position) {
         if (position >= 0 && position < imageUris.size()) {
             imageUris.remove(position);
@@ -76,13 +114,8 @@ public class ImagePreviewAdapter extends RecyclerView.Adapter<ImagePreviewAdapte
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Uri imageUri = imageUris.get(position);
         
-        // 使用 Glide 加载图片
-        Glide.with(holder.itemView.getContext())
-                .load(imageUri)
-                .centerCrop()
-                .placeholder(R.drawable.ic_image_placeholder)
-                .error(R.drawable.ic_image_error)
-                .into(holder.imageView);
+        // 使用ImageBindingHelper加载图片
+        ImageBindingHelper.loadLocalImage(holder.itemView.getContext(), imageUri, holder.imageView);
         
         // 删除按钮点击事件
         holder.btnRemove.setOnClickListener(v -> {

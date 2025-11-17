@@ -45,6 +45,15 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    
+    // 单元测试配置
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true  // Android SDK 类返回默认值而不抛异常
+            isIncludeAndroidResources = true  // 支持访问 Android 资源
+        }
+    }
+    
     buildFeatures {
         viewBinding = true
         buildConfig = true

@@ -1,14 +1,12 @@
 package com.dowdah.asknow.ui.adapter;
 
-import android.os.Handler;
-import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -23,7 +21,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     
@@ -34,35 +31,49 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
     private final OnQuestionClickListener listener;
     private boolean showLoadingFooter = false;
     private boolean showRetryFooter = false;
-    private OnRetryClickListener retryListener;
+    private BaseLoadingFooterViewHolder.OnRetryClickListener retryListener;
     private MessageDao messageDao;
     private long currentUserId;
     private ExecutorService executor;
     
+    /**
+     * 问题点击监听器接口
+     */
     public interface OnQuestionClickListener {
-        void onQuestionClick(QuestionEntity question);
+        void onQuestionClick(@NonNull QuestionEntity question);
     }
     
-    public interface OnRetryClickListener {
-        void onRetryClick();
-    }
-    
-    public QuestionAdapter(OnQuestionClickListener listener) {
+    public QuestionAdapter(@NonNull OnQuestionClickListener listener) {
         this.listener = listener;
     }
     
-    public QuestionAdapter(OnQuestionClickListener listener, MessageDao messageDao, long currentUserId, ExecutorService executor) {
+    public QuestionAdapter(
+        @NonNull OnQuestionClickListener listener,
+        @Nullable MessageDao messageDao,
+        long currentUserId,
+        @Nullable ExecutorService executor
+    ) {
         this.listener = listener;
         this.messageDao = messageDao;
         this.currentUserId = currentUserId;
         this.executor = executor;
     }
     
-    public void setRetryListener(OnRetryClickListener retryListener) {
+    /**
+     * 设置重试点击监听器
+     * 
+     * @param retryListener 重试点击监听器
+     */
+    public void setRetryListener(@Nullable BaseLoadingFooterViewHolder.OnRetryClickListener retryListener) {
         this.retryListener = retryListener;
     }
     
-    public void setQuestions(List<QuestionEntity> newQuestions) {
+    /**
+     * 设置问题列表（使用DiffUtil优化）
+     * 
+     * @param newQuestions 新的问题列表
+     */
+    public void setQuestions(@Nullable List<QuestionEntity> newQuestions) {
         if (newQuestions == null) {
             newQuestions = new ArrayList<>();
         }
@@ -73,7 +84,7 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
     }
     
     /**
-     * DiffUtil Callback for efficient list updates
+     * DiffUtil回调，用于高效的列表更新
      */
     private static class QuestionDiffCallback extends DiffUtil.Callback {
         private final List<QuestionEntity> oldList;
@@ -171,7 +182,7 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
         if (viewType == VIEW_TYPE_LOADING) {
             View view = LayoutInflater.from(parent.getContext())
                 .inflate(R.layout.item_loading_footer, parent, false);
-            return new LoadingFooterViewHolder(view);
+            return new BaseLoadingFooterViewHolder(view);
         } else {
             View view = LayoutInflater.from(parent.getContext())
                 .inflate(R.layout.item_question, parent, false);
@@ -184,8 +195,8 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
         if (holder instanceof QuestionViewHolder) {
             QuestionEntity question = questions.get(position);
             ((QuestionViewHolder) holder).bind(question, listener, messageDao, currentUserId, executor);
-        } else if (holder instanceof LoadingFooterViewHolder) {
-            ((LoadingFooterViewHolder) holder).bind(showRetryFooter, retryListener);
+        } else if (holder instanceof BaseLoadingFooterViewHolder) {
+            ((BaseLoadingFooterViewHolder) holder).bind(showRetryFooter, retryListener);
         }
     }
     
@@ -254,36 +265,6 @@ public class QuestionAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
                     return itemView.getContext().getString(R.string.status_closed);
                 default:
                     return status;
-            }
-        }
-    }
-    
-    static class LoadingFooterViewHolder extends RecyclerView.ViewHolder {
-        private final ProgressBar progressBar;
-        private final TextView tvLoadingText;
-        private final TextView tvRetry;
-        
-        public LoadingFooterViewHolder(@NonNull View itemView) {
-            super(itemView);
-            progressBar = itemView.findViewById(R.id.progressBar);
-            tvLoadingText = itemView.findViewById(R.id.tvLoadingText);
-            tvRetry = itemView.findViewById(R.id.tvRetry);
-        }
-        
-        public void bind(boolean showRetry, OnRetryClickListener retryListener) {
-            if (showRetry) {
-                progressBar.setVisibility(View.GONE);
-                tvLoadingText.setVisibility(View.GONE);
-                tvRetry.setVisibility(View.VISIBLE);
-                tvRetry.setOnClickListener(v -> {
-                    if (retryListener != null) {
-                        retryListener.onRetryClick();
-                    }
-                });
-            } else {
-                progressBar.setVisibility(View.VISIBLE);
-                tvLoadingText.setVisibility(View.VISIBLE);
-                tvRetry.setVisibility(View.GONE);
             }
         }
     }

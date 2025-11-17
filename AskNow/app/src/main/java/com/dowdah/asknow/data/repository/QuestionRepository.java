@@ -131,7 +131,7 @@ public class QuestionRepository {
                             if (!isAppendMode && page == 1) {
                                 // 删除本地存在但服务器不存在的问题
                                 List<QuestionEntity> localQuestions;
-                                if ("student".equals(role)) {
+                                if (com.dowdah.asknow.constants.AppConstants.ROLE_STUDENT.equals(role)) {
                                     // 学生端：获取本地所有该学生创建的问题
                                     localQuestions = questionDao.getQuestionsByUserIdSync(userId);
                                 } else {

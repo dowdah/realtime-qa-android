@@ -130,7 +130,7 @@ public class LoginActivity extends AppCompatActivity {
     
     private void navigateToMain(String role) {
         Intent intent;
-        if ("tutor".equalsIgnoreCase(role)) {
+        if (com.dowdah.asknow.constants.AppConstants.ROLE_TUTOR.equalsIgnoreCase(role)) {
             intent = new Intent(this, TutorMainActivity.class);
         } else {
             intent = new Intent(this, StudentMainActivity.class);
