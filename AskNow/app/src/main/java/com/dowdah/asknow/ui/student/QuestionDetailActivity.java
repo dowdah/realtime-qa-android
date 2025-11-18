@@ -218,10 +218,16 @@ public class QuestionDetailActivity extends AppCompatActivity {
                 }
                 
                 // 根据问题状态启用/禁用输入
+                // 只有在 in_progress 状态下才允许发送消息和图片
                 boolean isActive = !QuestionStatus.CLOSED.equals(question.getStatus()) && 
                                  !QuestionStatus.PENDING.equals(question.getStatus());
                 binding.etMessage.setEnabled(isActive);
                 binding.btnSend.setEnabled(isActive);
+                binding.btnSelectImage.setEnabled(isActive);
+                
+                // 视觉反馈：禁用时降低透明度
+                binding.btnSend.setAlpha(isActive ? 1.0f : 0.5f);
+                binding.btnSelectImage.setAlpha(isActive ? 1.0f : 0.5f);
             }
         });
     }

@@ -269,25 +269,43 @@ public class AnswerActivity extends AppCompatActivity {
         }
         switch (status) {
             case QuestionStatus.PENDING:
+                // 待接取状态：显示接受按钮，禁用所有输入功能
                 binding.btnAccept.setVisibility(View.VISIBLE);
                 binding.btnAccept.setEnabled(true);
                 binding.btnClose.setVisibility(View.GONE);
                 binding.etMessage.setEnabled(false);
                 binding.btnSend.setEnabled(false);
+                binding.btnSelectImage.setEnabled(false);
+                
+                // 视觉反馈：禁用时降低透明度
+                binding.btnSend.setAlpha(0.5f);
+                binding.btnSelectImage.setAlpha(0.5f);
                 break;
             case QuestionStatus.IN_PROGRESS:
+                // 进行中状态：启用所有输入功能，显示关闭按钮
                 binding.btnAccept.setVisibility(View.GONE);
                 binding.btnClose.setVisibility(View.VISIBLE);
                 binding.btnClose.setEnabled(true);
                 binding.etMessage.setEnabled(true);
                 binding.btnSend.setEnabled(true);
+                binding.btnSelectImage.setEnabled(true);
+                
+                // 视觉反馈：启用时恢复透明度
+                binding.btnSend.setAlpha(1.0f);
+                binding.btnSelectImage.setAlpha(1.0f);
                 break;
             case QuestionStatus.CLOSED:
+                // 已关闭状态：禁用所有输入和操作功能
                 binding.btnAccept.setVisibility(View.GONE);
                 binding.btnClose.setVisibility(View.VISIBLE);
                 binding.btnClose.setEnabled(false);
                 binding.etMessage.setEnabled(false);
                 binding.btnSend.setEnabled(false);
+                binding.btnSelectImage.setEnabled(false);
+                
+                // 视觉反馈：禁用时降低透明度
+                binding.btnSend.setAlpha(0.5f);
+                binding.btnSelectImage.setAlpha(0.5f);
                 break;
         }
     }
