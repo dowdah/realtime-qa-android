@@ -12,7 +12,7 @@ import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
-import com.dowdah.asknow.constants.QuestionStatus;
+import com.dowdah.asknow.constants.enums.QuestionStatus;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.databinding.FragmentQuestionListByStatusBinding;
 import com.dowdah.asknow.ui.adapter.QuestionAdapter;

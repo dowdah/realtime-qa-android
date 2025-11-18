@@ -5,9 +5,9 @@ import android.util.Log;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
-import com.dowdah.asknow.constants.MessageType;
-import com.dowdah.asknow.constants.QuestionStatus;
-import com.dowdah.asknow.constants.WebSocketMessageType;
+import com.dowdah.asknow.constants.enums.MessageType;
+import com.dowdah.asknow.constants.enums.QuestionStatus;
+import com.dowdah.asknow.constants.enums.WebSocketMessageType;
 import com.dowdah.asknow.data.api.WebSocketClient;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;

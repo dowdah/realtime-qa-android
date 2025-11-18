@@ -6,7 +6,7 @@ import androidx.room.Ignore;
 import androidx.room.Index;
 import androidx.room.PrimaryKey;
 
-import com.dowdah.asknow.constants.MessageStatus;
+import com.dowdah.asknow.constants.enums.MessageStatus;
 
 @Entity(
     tableName = "messages",

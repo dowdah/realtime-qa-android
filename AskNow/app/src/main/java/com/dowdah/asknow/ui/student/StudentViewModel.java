@@ -8,7 +8,7 @@ import androidx.lifecycle.LiveData;
 
 import com.dowdah.asknow.R;
 import com.dowdah.asknow.constants.AppConstants;
-import com.dowdah.asknow.constants.WebSocketMessageType;
+import com.dowdah.asknow.constants.enums.WebSocketMessageType;
 import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;

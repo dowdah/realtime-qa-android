@@ -9,9 +9,9 @@ import androidx.lifecycle.MutableLiveData;
 
 import com.dowdah.asknow.R;
 import com.dowdah.asknow.base.BaseViewModel;
-import com.dowdah.asknow.constants.MessageStatus;
-import com.dowdah.asknow.constants.MessageType;
-import com.dowdah.asknow.constants.QuestionStatus;
+import com.dowdah.asknow.constants.enums.MessageStatus;
+import com.dowdah.asknow.constants.enums.MessageType;
+import com.dowdah.asknow.constants.enums.QuestionStatus;
 import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;

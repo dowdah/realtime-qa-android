@@ -2,7 +2,7 @@ package com.dowdah.asknow.data.repository;
 
 import android.util.Log;
 
-import com.dowdah.asknow.constants.MessageStatus;
+import com.dowdah.asknow.constants.enums.MessageStatus;
 import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;

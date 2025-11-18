@@ -5,10 +5,8 @@ import androidx.room.RoomDatabase;
 
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
-import com.dowdah.asknow.data.local.dao.UserDao;
 import com.dowdah.asknow.data.local.entity.MessageEntity;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
-import com.dowdah.asknow.data.local.entity.UserEntity;
 
 /**
  * 应用数据库
@@ -18,7 +16,6 @@ import com.dowdah.asknow.data.local.entity.UserEntity;
  */
 @Database(
     entities = {
-        UserEntity.class,
         QuestionEntity.class,
         MessageEntity.class
     },
@@ -26,7 +23,6 @@ import com.dowdah.asknow.data.local.entity.UserEntity;
     exportSchema = false
 )
 public abstract class AppDatabase extends RoomDatabase {
-    public abstract UserDao userDao();
     public abstract QuestionDao questionDao();
     public abstract MessageDao messageDao();
 }

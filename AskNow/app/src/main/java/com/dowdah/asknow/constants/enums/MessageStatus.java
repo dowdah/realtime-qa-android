@@ -1,4 +1,4 @@
-package com.dowdah.asknow.constants;
+package com.dowdah.asknow.constants.enums;
 
 /**
  * 消息发送状态常量

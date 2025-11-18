@@ -10,7 +10,6 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
 import com.dowdah.asknow.data.local.AppDatabase;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
-import com.dowdah.asknow.data.local.dao.UserDao;
 
 import javax.inject.Singleton;
 
@@ -71,12 +70,6 @@ public class DatabaseModule {
             .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_7_8)
             .fallbackToDestructiveMigration()
             .build();
-    }
-    
-    @Provides
-    @Singleton
-    public UserDao provideUserDao(AppDatabase database) {
-        return database.userDao();
     }
     
     @Provides

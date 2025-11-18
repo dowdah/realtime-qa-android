@@ -53,21 +53,6 @@ public final class AppConstants {
     // ==================== WebSocket相关 ====================
     
     /**
-     * WebSocket重连延迟（毫秒）
-     */
-    public static final long WEBSOCKET_RECONNECT_DELAY_MS = 3000;
-    
-    /**
-     * WebSocket心跳间隔（毫秒）
-     */
-    public static final long WEBSOCKET_HEARTBEAT_INTERVAL_MS = 30000;
-    
-    /**
-     * WebSocket连接超时（毫秒）
-     */
-    public static final long WEBSOCKET_CONNECT_TIMEOUT_MS = 10000;
-    
-    /**
      * WebSocket退避延迟数组（毫秒）
      */
     public static final int[] WEBSOCKET_BACKOFF_DELAYS = {1000, 2000, 4000, 8000, 16000, 30000};
@@ -83,6 +68,11 @@ public final class AppConstants {
     public static final int WEBSOCKET_NORMAL_CLOSURE_CODE = 1000;
     
     // ==================== 文件上传相关 ====================
+    
+    /**
+     * 图片上传表单字段名
+     */
+    public static final String FORM_FIELD_IMAGE = "image";
     
     /**
      * 最大文件大小（字节）10MB
@@ -112,26 +102,11 @@ public final class AppConstants {
     // ==================== 缓存相关 ====================
     
     /**
-     * 数据同步间隔（毫秒）5分钟
-     */
-    public static final long SYNC_INTERVAL_MS = 5 * 60 * 1000;
-    
-    /**
-     * 缓存过期时间（毫秒）24小时
-     */
-    public static final long CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000;
-    
-    /**
      * 同步初始延迟（毫秒）
      */
     public static final long SYNC_INITIAL_DELAY_MS = 300;
     
     // ==================== UI相关 ====================
-    
-    /**
-     * 列表滚动加载阈值（距离底部的item数量）
-     */
-    public static final int SCROLL_LOAD_THRESHOLD = 5;
     
     /**
      * 分页加载触发阈值（接近底部时提前加载）
@@ -142,16 +117,6 @@ public final class AppConstants {
      * 未读消息显示上限（超过此数量显示 99+）
      */
     public static final int MAX_UNREAD_BADGE_COUNT = 99;
-    
-    /**
-     * Toast显示时长（毫秒）
-     */
-    public static final int TOAST_DURATION_MS = 2000;
-    
-    /**
-     * 防抖延迟（毫秒）防止重复点击
-     */
-    public static final long DEBOUNCE_DELAY_MS = 500;
     
     // ==================== 用户角色常量 ====================
     
@@ -164,32 +129,7 @@ public final class AppConstants {
      * 教师角色
      */
     public static final String ROLE_TUTOR = "tutor";
-    
-    // ==================== 数据库相关 ====================
-    
-    /**
-     * 数据库版本号
-     */
-    public static final int DATABASE_VERSION = 5;
-    
-    /**
-     * 数据库名称
-     */
-    public static final String DATABASE_NAME = "asknow_database";
-    
-    // ==================== 日志相关 ====================
-    
-    /**
-     * 是否启用详细日志（根据BuildConfig动态设置）
-     */
-    public static final boolean ENABLE_VERBOSE_LOGGING = true; // 在发布版本中设置为false
-    
-    /**
-     * 日志TAG前缀
-     */
-    public static final String LOG_TAG_PREFIX = "AskNow_";
-    
-    // Private constructor to prevent instantiation
+
     private AppConstants() {
         throw new AssertionError("Cannot instantiate constants class");
     }

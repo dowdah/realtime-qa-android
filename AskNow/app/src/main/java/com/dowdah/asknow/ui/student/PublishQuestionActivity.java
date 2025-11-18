@@ -20,11 +20,11 @@ import androidx.recyclerview.widget.GridLayoutManager;
 
 import com.bumptech.glide.Glide;
 import com.dowdah.asknow.R;
-import com.dowdah.asknow.constants.ApiConstants;
+import com.dowdah.asknow.constants.AppConstants;
 import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.model.UploadResponse;
 import com.dowdah.asknow.databinding.ActivityPublishQuestionBinding;
-import com.dowdah.asknow.ui.adapter.ImagePreviewAdapter;
+import com.dowdah.asknow.ui.adapter.ImageSelectionAdapter;
 import com.dowdah.asknow.utils.SharedPreferencesManager;
 import com.dowdah.asknow.utils.ValidationUtils;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -60,7 +60,7 @@ public class PublishQuestionActivity extends AppCompatActivity {
     private static final int MAX_IMAGES = 9;
     private List<Uri> selectedImageUris = new ArrayList<>();
     private List<String> uploadedImagePaths = new ArrayList<>();
-    private ImagePreviewAdapter imagePreviewAdapter;
+    private ImageSelectionAdapter imagePreviewAdapter;
     
     private final ActivityResultLauncher<Intent> imagePickerLauncher = registerForActivityResult(
         new ActivityResultContracts.StartActivityForResult(),
@@ -127,7 +127,7 @@ public class PublishQuestionActivity extends AppCompatActivity {
     
     private void setupViews() {
         // 设置图片预览适配器
-        imagePreviewAdapter = new ImagePreviewAdapter();
+        imagePreviewAdapter = new ImageSelectionAdapter();
         binding.rvImagePreview.setLayoutManager(new GridLayoutManager(this, 3));
         binding.rvImagePreview.setAdapter(imagePreviewAdapter);
         
@@ -158,20 +158,11 @@ public class PublishQuestionActivity extends AppCompatActivity {
     }
     
     private void checkPermissionAndPickImage() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
-                == PackageManager.PERMISSION_GRANTED) {
-                openImagePicker();
-            } else {
-                permissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES);
-            }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
+            == PackageManager.PERMISSION_GRANTED) {
+            openImagePicker();
         } else {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                == PackageManager.PERMISSION_GRANTED) {
-                openImagePicker();
-            } else {
-                permissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE);
-            }
+            permissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES);
         }
     }
     
@@ -260,7 +251,7 @@ public class PublishQuestionActivity extends AppCompatActivity {
             
             // 创建上传请求
             RequestBody requestBody = RequestBody.create(file, MediaType.parse("image/*"));
-            MultipartBody.Part imagePart = MultipartBody.Part.createFormData(ApiConstants.FORM_FIELD_IMAGE, file.getName(), requestBody);
+            MultipartBody.Part imagePart = MultipartBody.Part.createFormData(AppConstants.FORM_FIELD_IMAGE, file.getName(), requestBody);
             
             String token = "Bearer " + prefsManager.getToken();
             apiService.uploadImage(token, imagePart).enqueue(new Callback<UploadResponse>() {

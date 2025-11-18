@@ -9,7 +9,7 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 
 import com.dowdah.asknow.R;
-import com.dowdah.asknow.constants.ApiConstants;
+import com.dowdah.asknow.constants.AppConstants;
 import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.model.UploadResponse;
 import com.dowdah.asknow.ui.chat.ChatViewModel;
@@ -94,7 +94,7 @@ public class ImageMessageHelper {
             
             // 创建上传请求
             RequestBody requestBody = RequestBody.create(file, MediaType.parse("image/*"));
-            MultipartBody.Part imagePart = MultipartBody.Part.createFormData(ApiConstants.FORM_FIELD_IMAGE, file.getName(), requestBody);
+            MultipartBody.Part imagePart = MultipartBody.Part.createFormData(AppConstants.FORM_FIELD_IMAGE, file.getName(), requestBody);
             
             String token = "Bearer " + prefsManager.getToken();
             apiService.uploadImage(token, imagePart).enqueue(new Callback<UploadResponse>() {

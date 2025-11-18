@@ -17,9 +17,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 图片预览适配器，用于显示和删除图片
+ * 图片选择适配器，用于显示本地选择的图片并支持删除操作
+ * 
+ * 用途：在发布问题时，显示用户从相册或相机选择的本地图片列表
+ * 功能：
+ * - 显示本地图片（Uri）
+ * - 支持删除图片
+ * - 支持点击图片预览
  */
-public class ImagePreviewAdapter extends RecyclerView.Adapter<ImagePreviewAdapter.ViewHolder> {
+public class ImageSelectionAdapter extends RecyclerView.Adapter<ImageSelectionAdapter.ViewHolder> {
     
     private List<Uri> imageUris = new ArrayList<>();
     private OnImageRemoveListener removeListener;
@@ -39,7 +45,7 @@ public class ImagePreviewAdapter extends RecyclerView.Adapter<ImagePreviewAdapte
         void onImageClick(int position, @NonNull Uri imageUri);
     }
     
-    public ImagePreviewAdapter() {
+    public ImageSelectionAdapter() {
     }
     
     /**
@@ -124,7 +130,8 @@ public class ImagePreviewAdapter extends RecyclerView.Adapter<ImagePreviewAdapte
                 if (removeListener != null) {
                     removeListener.onImageRemove(adapterPosition);
                 }
-                removeImage(adapterPosition);
+                // 不在这里直接调用removeImage，而是通过listener回调让Activity统一管理数据源
+                // Activity会调用updateImagePreview()来刷新整个列表
             }
         });
         
@@ -153,5 +160,4 @@ public class ImagePreviewAdapter extends RecyclerView.Adapter<ImagePreviewAdapte
         }
     }
 }
-
 

@@ -11,7 +11,7 @@ import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.dowdah.asknow.R;
-import com.dowdah.asknow.constants.QuestionStatus;
+import com.dowdah.asknow.constants.enums.QuestionStatus;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
 

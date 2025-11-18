@@ -5,7 +5,7 @@ import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 
-import com.dowdah.asknow.constants.QuestionStatus;
+import com.dowdah.asknow.constants.enums.QuestionStatus;
 import com.dowdah.asknow.ui.tutor.QuestionListByStatusFragment;
 
 public class TutorQuestionsPagerAdapter extends FragmentStateAdapter {

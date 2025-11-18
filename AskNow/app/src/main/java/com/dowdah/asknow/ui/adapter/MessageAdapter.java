@@ -15,8 +15,8 @@ import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.dowdah.asknow.R;
-import com.dowdah.asknow.constants.MessageStatus;
-import com.dowdah.asknow.constants.MessageType;
+import com.dowdah.asknow.constants.enums.MessageStatus;
+import com.dowdah.asknow.constants.enums.MessageType;
 import com.dowdah.asknow.data.local.entity.MessageEntity;
 import com.dowdah.asknow.databinding.ItemMessageReceivedBinding;
 import com.dowdah.asknow.databinding.ItemMessageSentBinding;
