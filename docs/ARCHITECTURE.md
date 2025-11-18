@@ -286,10 +286,8 @@ public class WebSocketClient {
 **Room 数据库架构：**
 ```
 AppDatabase (version 8)
-├── users (表)
 ├── questions (表)
-│   ├── 索引：userId, status, tutorId, createdAt
-│   └── 外键：userId → users.id, tutorId → users.id
+│   └── 索引：userId, status, tutorId, createdAt
 └── messages (表)
     ├── 索引：questionId, senderId, createdAt
     ├── 外键：questionId → questions.id (CASCADE)
@@ -1191,7 +1189,9 @@ sequenceDiagram
 
 ## 数据模型
 
-### 数据库 ER 图
+### 后端数据库 ER 图
+
+以下为后端 Python/SQLAlchemy 数据库结构。Android 本地数据库结构请参见 4.2 节。
 
 ```mermaid
 erDiagram
@@ -1270,9 +1270,11 @@ erDiagram
 - `is_deleted`: 软删除标记
 - `deleted_at`: 删除时间
 
-### Android 本地数据库扩展
+### Android 本地数据库
 
-Android 端除了上述三个表，还有额外字段：
+Android 端使用 Room 数据库仅缓存 questions 和 messages 两个表。
+
+说明：用户信息通过 SharedPreferencesManager 管理，不存储在本地数据库中。
 
 #### Messages 表额外字段
 - `sendStatus`: 发送状态 (`pending`, `sent`, `failed`)

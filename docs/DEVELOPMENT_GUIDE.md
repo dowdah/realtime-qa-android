@@ -168,11 +168,9 @@ AskNow/app/src/main/java/com/dowdah/asknow/
 │   ├── local/                  # 本地数据库
 │   │   ├── AppDatabase.java   # Room 数据库
 │   │   ├── dao/                # 数据访问对象
-│   │   │   ├── UserDao.java
 │   │   │   ├── QuestionDao.java
 │   │   │   └── MessageDao.java
 │   │   └── entity/             # 数据库实体
-│   │       ├── UserEntity.java
 │   │       ├── QuestionEntity.java
 │   │       └── MessageEntity.java
 │   │
