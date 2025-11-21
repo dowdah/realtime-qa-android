@@ -64,7 +64,7 @@ AskNow 是一个实时问答辅导应用系统，支持学生提问和老师在�
 **Android 客户端：**
 - Android Studio Hedgehog (2023.1.1) 或更高版本
 - JDK 17+
-- Android SDK 33+
+- Android SDK（最低SDK: 33，编译SDK: 36，目标SDK: 36）
 - Gradle 8.13+
 
 **Python 后端：**
@@ -151,6 +151,12 @@ cd AskNow
   - 代码规范和测试指南
   - 调试技巧和常见问题
 
+- **[🏛️ Android 类架构文档](docs/ANDROID_CLASSES.md)**
+  - 完整的类结构和职责说明
+  - MVVM 架构实现细节
+  - 设计模式应用
+  - 数据流分析和关键技术细节
+
 - **[🚀 部署指南](docs/DEPLOYMENT.md)**
   - 生产环境配置
   - 服务器部署步骤
@@ -226,5 +232,6 @@ cd AskNow
 如有问题或建议，请通过以下方式联系：
 
 - 提交 GitHub Issue
+- 提交问题到 x@dowdah.com
 
 ---

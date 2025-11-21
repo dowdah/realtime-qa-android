@@ -223,9 +223,12 @@ AskNow/app/src/main/java/com/dowdah/asknow/
 ├── utils/                      # 工具类
 │   ├── DateUtils.java          # 日期格式化
 │   ├── ErrorHandler.java       # 错误处理
-│   ├── ImageMessageHelper.java # 图片消息处理
+│   ├── ImageBindingHelper.java # 图片加载辅助
+│   ├── MyAppGlideModule.java   # Glide配置模块
 │   ├── RetryHelper.java        # 重试逻辑
 │   ├── SharedPreferencesManager.java  # 本地存储
+│   ├── ThreadUtils.java        # 线程工具
+│   ├── ValidationUtils.java    # 输入验证
 │   └── WebSocketManager.java   # WebSocket 管理
 │
 └── AskNowApplication.java      # Application 类
@@ -1163,7 +1166,7 @@ if __name__ == "__main__":
 | Adapter | `XxxAdapter` | `QuestionAdapter`, `MessageAdapter` |
 | Entity | `XxxEntity` | `QuestionEntity`, `MessageEntity` |
 | DAO | `XxxDao` | `QuestionDao`, `MessageDao` |
-| Util | `XxxUtils` 或 `XxxHelper` | `DateUtils`, `ImageMessageHelper` |
+| Util | `XxxUtils` 或 `XxxHelper` | `DateUtils`, `ImageBindingHelper`, `ValidationUtils` |
 | Constants | `大写_下划线` | `MAX_RETRY_COUNT`, `BASE_URL` |
 
 **变量命名**：

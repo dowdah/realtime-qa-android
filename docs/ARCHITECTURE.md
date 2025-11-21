@@ -15,13 +15,16 @@
 
 ## 系统概览
 
-AskNow 采用 **客户端-服务器架构**，包含三个核心组件：
+AskNow 采用 **客户端-服务器架构**，包含两个核心组件：
 
 ```mermaid
 graph TB
     subgraph "Android 客户端"
-        A[学生端 App]
-        B[教师端 App]
+        A[AskNow App]
+        A1[学生界面<br/>StudentMainActivity]
+        A2[教师界面<br/>TutorMainActivity]
+        A --> A1
+        A --> A2
     end
     
     subgraph "Python 后端"
@@ -30,13 +33,17 @@ graph TB
         E[SQLite Database]
     end
     
-    A -->|HTTP/REST API| C
-    A -->|WebSocket| D
-    B -->|HTTP/REST API| C
-    B -->|WebSocket| D
+    A -->|HTTP/REST API<br/>发送请求| C
+    A -->|WebSocket<br/>接收服务器推送| D
     C -->|SQL| E
     D -->|SQL| E
 ```
+
+**说明**：
+- Android端是**单一应用**，用户登录时选择角色（student/tutor）
+- 根据用户角色，应用会跳转到相应的主界面（StudentMainActivity 或 TutorMainActivity）
+- **HTTP用于客户端发送**（创建问题、发送消息、上传文件等）
+- **WebSocket用于服务器推送**（新问题通知、新消息通知、问题状态更新等）
 
 ### 技术栈总览
 
@@ -95,7 +102,9 @@ ui/
 │   └── QuestionDetailActivity.java  # 问题详情/聊天
 ├── tutor/
 │   ├── TutorMainActivity.java       # 教师主界面
-│   └── AnswerActivity.java          # 回答界面/聊天
+│   ├── QuestionListByStatusFragment.java  # 按状态分类的问题列表
+│   ├── AnswerActivity.java          # 回答界面/聊天
+│   └── TutorViewModel.java          # 教师端 ViewModel
 └── image/
     └── ImagePreviewActivity.java    # 图片预览（支持缩放）
 ```
@@ -195,12 +204,11 @@ public class QuestionRepository {
 public class MessageRepository {
     private final ApiService apiService;
     private final MessageDao messageDao;
-    private final PendingMessageDao pendingMessageDao;
     private WebSocketClient webSocketClient;
     
-    // 网络状态监听和自动重试机制
-    private void registerNetworkCallback() {
-        // 监听网络变化，网络恢复时自动发送待发送消息
+    // WebSocket连接状态回调
+    public void onWebSocketConnected() {
+        // WebSocket连接成功后的处理（如果需要）
     }
     
     // 未读消息计数
@@ -209,6 +217,8 @@ public class MessageRepository {
     }
 }
 ```
+
+**说明**：从 v7→v8 迁移后，已删除 `PendingMessageDao` 和 `pending_messages` 表。所有消息发送改为通过 **HTTP API**，WebSocket 仅用于接收服务器推送。
 
 #### 4. Data Layer (数据层)
 
@@ -264,22 +274,33 @@ public class WebSocketClient {
     private WebSocket webSocket;
     private final OkHttpClient client;
     private final String url;
+    private final WebSocketCallback callback;
     private int retryCount = 0;
+    private boolean isManuallyDisconnected = false;
     
     // 自动重连机制（指数退避）
     private static final int[] BACKOFF_DELAYS = {1000, 2000, 4000, 8000, 16000};
+    private static final int MAX_RETRY_COUNT = 5;
     
     public void connect() {
         // 建立 WebSocket 连接
-        // 设置消息监听器
+        // 设置消息监听器（onConnected, onMessage, onDisconnected, onError）
+    }
+    
+    public void disconnect() {
+        // 手动断开连接，不触发自动重连
+        isManuallyDisconnected = true;
     }
     
     private void reconnect() {
         // 指数退避重连策略
         // 最多重试 5 次
+        // 仅在非手动断开时触发
     }
 }
 ```
+
+**重要说明**：从 v7→v8 起，**客户端不再使用 WebSocket 发送消息**（`sendMessage` 方法已废弃）。WebSocket **仅用于接收**服务器推送的实时通知（新问题、新消息、状态更新等）。所有客户端请求均通过 **HTTP REST API** 发送。
 
 ##### 4.2 Local DataSource (本地数据源)
 
@@ -596,9 +617,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=config.CORS_ALLOW_CREDENTIALS,
+    allow_methods=config.CORS_ALLOW_METHODS,
+    allow_headers=config.CORS_ALLOW_HEADERS,
 )
 ```
 
@@ -743,19 +764,31 @@ class Question(Base):
             "id": self.id,
             "userId": self.user_id,
             "tutorId": self.tutor_id,
-            "content": self.content,
-            "imagePaths": self._parse_image_paths(),
             "status": self.status,
-            "createdAt": self.created_at,
             "updatedAt": self.updated_at
         }
+        if full:
+            data.update({
+                "content": self.content,
+                "imagePaths": self._parse_image_paths(),
+                "createdAt": self.created_at
+            })
         return data
     
     def to_ws_message(self, message_type: str = "QUESTION_UPDATED") -> Dict[str, Any]:
         """创建 WebSocket 消息"""
         return {
             "type": message_type,
-            "data": self.to_dict(full=False),
+            "data": {
+                "questionId": self.id,
+                "userId": self.user_id,
+                "tutorId": self.tutor_id,
+                "content": self.content,
+                "imagePaths": self._parse_image_paths(),
+                "status": self.status,
+                "createdAt": self.created_at,
+                "updatedAt": self.updated_at
+            },
             "timestamp": str(int(time.time() * 1000))
         }
 
@@ -917,12 +950,18 @@ class ConnectionManager:
         ack_message = {
             "type": "ACK",
             "messageId": message_id,
-            "timestamp": str(int(time.time() * 1000))
+            "timestamp": str(int(asyncio.get_event_loop().time() * 1000))
         }
         await self.send_personal_message(ack_message, user_id)
 
 manager = ConnectionManager()
 ```
+
+**WebSocket 通信模式**：
+- **客户端→服务器**：客户端不再通过 WebSocket 发送业务消息，所有请求通过 HTTP API
+- **服务器→客户端**：服务器通过 WebSocket 主动推送实时通知
+- **教师连接时**：服务器会主动推送所有 pending 状态的问题给教师
+- **保留连接**：WebSocket 连接保持用于接收心跳、在线状态等控制消息
 
 ### 文件上传处理
 
@@ -1010,78 +1049,100 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Student as 学生客户端
+    participant UI as 学生界面
+    participant VM as StudentViewModel
     participant API as FastAPI 服务器
     participant DB as 数据库
     participant WS as WebSocket Manager
     participant Tutor as 教师客户端
     
-    Student->>Student: 填写问题内容，选择图片
+    UI->>UI: 填写问题内容，选择图片
+    UI->>VM: createQuestionWithImages(content, imageUris)
+    
+    Note over VM: ViewModel 处理所有业务逻辑
     opt 上传图片
         loop 每张图片
-            Student->>API: POST /api/upload<br/>FormData: image
+            VM->>VM: 后台线程处理文件 I/O
+            VM-->>UI: LiveData 更新上传进度
+            VM->>API: POST /api/upload<br/>FormData: image
             API->>API: 验证文件类型和大小
             API->>API: 保存到 uploads/{user_id}/{timestamp}.jpg
-            API-->>Student: {success: true, imagePath}
+            API-->>VM: {success: true, imagePath}
         end
     end
     
-    Student->>API: POST /api/questions<br/>{content, imagePaths}
+    Note over VM: 所有图片上传完成
+    VM->>API: POST /api/questions<br/>{content, imagePaths}
     API->>DB: 插入问题 (status=pending)
     API->>WS: 广播给所有在线教师
     WS->>Tutor: WebSocket 推送<br/>{type: "NEW_QUESTION", data: {...}}
     Tutor->>Tutor: 插入本地数据库
     Tutor->>Tutor: 更新问题列表 UI
-    API-->>Student: {success: true, question}
-    Student->>Student: 跳转到问题详情页
+    API-->>VM: {success: true, question}
+    VM->>VM: 保存到本地数据库
+    VM-->>UI: LiveData 通知创建成功
+    UI->>UI: 跳转到问题列表页
 ```
 
 ### 3. 教师接受问题流程
 
 ```mermaid
 sequenceDiagram
-    participant Tutor as 教师客户端
+    participant UI as 教师界面
+    participant VM as ChatViewModel
+    participant LocalDB as 本地数据库
     participant API as FastAPI 服务器
-    participant DB as 数据库
+    participant DB as 服务器数据库
     participant WS as WebSocket Manager
     participant Student as 学生客户端
     
-    Tutor->>Tutor: 点击"接受问题"按钮
-    Tutor->>API: POST /api/questions/accept<br/>{questionId}
+    UI->>UI: 点击"接受问题"按钮
+    UI->>VM: acceptQuestion(questionId)
+    
+    Note over VM,LocalDB: 乐观更新
+    VM->>LocalDB: 更新本地问题状态为 in_progress
+    LocalDB-->>UI: LiveData 通知，立即更新 UI
+    
+    VM->>API: POST /api/questions/accept<br/>{questionId}
     API->>API: 验证用户角色 (必须是 tutor)
     API->>DB: 检查问题状态 (必须是 pending)
     API->>DB: 更新问题<br/>status=in_progress<br/>tutor_id={current_user_id}
     
+    Note over API,WS: WebSocket 实时推送
     API->>WS: 发送给学生
     WS->>Student: WebSocket 推送<br/>{type: "QUESTION_UPDATED", data: {...}}
     Student->>Student: 更新本地数据库和 UI
     
     API->>WS: 广播给所有教师
-    WS->>Tutor: WebSocket 推送<br/>{type: "QUESTION_UPDATED", data: {...}}
-    Tutor->>Tutor: 从"待接取"列表移除<br/>添加到"进行中"列表
+    WS->>UI: WebSocket 推送<br/>{type: "QUESTION_UPDATED", data: {...}}
+    UI->>LocalDB: 更新本地数据库
+    LocalDB-->>UI: LiveData 通知更新
     
-    API-->>Tutor: {success: true, question}
-    Tutor->>Tutor: 跳转到回答界面
+    API-->>VM: {success: true, question}
+    VM->>LocalDB: 确认本地数据库状态正确
 ```
 
 ### 4. 实时聊天消息流程
 
 ```mermaid
 sequenceDiagram
-    participant Sender as 发送方 (学生/教师)
+    participant UI as 发送方界面 (学生/教师)
+    participant VM as ChatViewModel
     participant LocalDB as 本地数据库
     participant API as FastAPI 服务器
     participant DB as 服务器数据库
     participant WS as WebSocket Manager
-    participant Receiver as 接收方 (教师/学生)
+    participant Receiver as 接收方客户端
     
-    Sender->>Sender: 输入消息，点击发送
+    UI->>UI: 输入消息，点击发送
+    UI->>VM: sendMessage(questionId, content)
     
-    Note over Sender,LocalDB: 乐观更新
-    Sender->>LocalDB: 插入消息<br/>sendStatus=pending<br/>tempId=-timestamp
-    Sender->>Sender: 立即显示消息（发送中状态）
+    Note over VM,LocalDB: 乐观更新
+    VM->>VM: 生成临时ID (负数时间戳)
+    VM->>LocalDB: 插入消息<br/>sendStatus=pending<br/>tempId=-timestamp
+    LocalDB-->>UI: LiveData 通知，立即显示消息
     
-    Sender->>API: POST /api/messages<br/>{questionId, content, messageType}
+    VM->>API: POST /api/messages<br/>{questionId, content, messageType}
     API->>DB: 插入消息记录
     API->>DB: 更新问题的 updated_at
     
@@ -1089,19 +1150,20 @@ sequenceDiagram
     API->>WS: 确定接收方 user_id
     WS->>Receiver: WebSocket 推送<br/>{type: "CHAT_MESSAGE", data: {...}}
     Receiver->>LocalDB: 插入消息到本地数据库
-    Receiver->>Receiver: 更新聊天界面
+    LocalDB-->>Receiver: LiveData 通知，更新聊天界面
     opt 不在聊天界面
         Receiver->>Receiver: 显示通知（未读消息数+1）
     end
     
-    API-->>Sender: {success: true, data: {id, ...}}
-    Sender->>LocalDB: 更新消息<br/>删除临时消息<br/>插入真实消息 (sendStatus=sent)
-    Sender->>Sender: 更新 UI（去除"发送中"状态）
+    API-->>VM: {success: true, data: {id, ...}}
+    VM->>LocalDB: 删除临时消息
+    VM->>LocalDB: 插入真实消息 (sendStatus=sent)
+    LocalDB-->>UI: LiveData 通知，更新 UI
     
     alt 发送失败
-        API-->>Sender: {success: false} 或网络错误
-        Sender->>LocalDB: 更新消息 sendStatus=failed
-        Sender->>Sender: 显示"发送失败"，提供重试按钮
+        API-->>VM: {success: false} 或网络错误
+        VM->>LocalDB: 更新消息 sendStatus=failed
+        LocalDB-->>UI: 显示"发送失败"，提供重试按钮
     end
 ```
 
@@ -1462,6 +1524,24 @@ AskNow 采用现代化的技术栈和架构设计，实现了：
 5. **性能优化**：数据库索引、连接池、线程管理
 6. **安全性**：JWT 认证、输入验证、文件上传安全
 
-详细的 API 文档请参考 [API_REFERENCE.md](API_REFERENCE.md)。
+### MVVM 架构实现
+
+**架构原则**: 严格遵循 MVVM 架构，View 层只负责 UI 展示，所有业务逻辑在 ViewModel 中实现。
+
+**核心特性**:
+- **StudentViewModel**: `createQuestionWithImages()` 方法统一处理图片上传和问题创建
+- **ChatViewModel**: `uploadAndSendImage()` 方法处理聊天中的图片上传
+- **职责分明**: View 层只处理 UI，ViewModel 处理所有业务逻辑
+- **易于测试**: ViewModel 可独立进行单元测试，无需 Android 框架
+- **代码复用**: 图片上传逻辑集中管理，避免重复代码
+- **响应式更新**: 通过 LiveData 自动更新 UI，用户体验流畅
+
+**技术实现**:
+- 文件 I/O 操作在后台线程执行（`executeInBackground()`）
+- 网络请求在主线程执行（Retrofit 自动处理）
+- 临时文件自动清理，避免内存泄漏
+- 上传进度实时通知（`UploadProgress` LiveData）
+
+详细的 API 文档请参考 [API_REFERENCE.md](API_REFERENCE.md)。  
 开发指南请参考 [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)。
 

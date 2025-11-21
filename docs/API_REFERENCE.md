@@ -812,7 +812,7 @@ WebSocket webSocket = client.newWebSocket(request, new WebSocketListener() {
 {
   "type": "NEW_QUESTION",
   "data": {
-    "id": 125,
+    "questionId": 125,
     "userId": 456,
     "tutorId": null,
     "content": "如何解这道数学题？",
@@ -877,10 +877,13 @@ WebSocket webSocket = client.newWebSocket(request, new WebSocketListener() {
 {
   "type": "QUESTION_UPDATED",
   "data": {
-    "id": 123,
+    "questionId": 123,
     "userId": 456,
     "tutorId": 789,
+    "content": "如何解这道数学题？2x + 5 = 15",
+    "imagePaths": ["/uploads/456/1234567890.jpg"],
     "status": "in_progress",
+    "createdAt": 1234567920000,
     "updatedAt": 1234567935000
   },
   "timestamp": "1234567935000"
