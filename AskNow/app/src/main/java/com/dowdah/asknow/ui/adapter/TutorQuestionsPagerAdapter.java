@@ -5,6 +5,7 @@ import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 
+import com.dowdah.asknow.constants.enums.QuestionStatus;
 import com.dowdah.asknow.ui.tutor.QuestionListByStatusFragment;
 
 public class TutorQuestionsPagerAdapter extends FragmentStateAdapter {
@@ -20,13 +21,13 @@ public class TutorQuestionsPagerAdapter extends FragmentStateAdapter {
     public Fragment createFragment(int position) {
         switch (position) {
             case 0:
-                return QuestionListByStatusFragment.newInstance("pending");
+                return QuestionListByStatusFragment.newInstance(QuestionStatus.PENDING);
             case 1:
-                return QuestionListByStatusFragment.newInstance("in_progress");
+                return QuestionListByStatusFragment.newInstance(QuestionStatus.IN_PROGRESS);
             case 2:
-                return QuestionListByStatusFragment.newInstance("closed");
+                return QuestionListByStatusFragment.newInstance(QuestionStatus.CLOSED);
             default:
-                return QuestionListByStatusFragment.newInstance("pending");
+                return QuestionListByStatusFragment.newInstance(QuestionStatus.PENDING);
         }
     }
     

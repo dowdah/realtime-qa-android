@@ -110,7 +110,7 @@ public class AuthViewModel extends BaseViewModel {
         }
         
         if (role.isEmpty()) {
-            role = "student"; // Default role
+            role = com.dowdah.asknow.constants.AppConstants.ROLE_STUDENT; // Default role
         }
         
         setLoading(true);

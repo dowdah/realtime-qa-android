@@ -19,8 +19,10 @@ import org.mockito.junit.MockitoJUnitRunner;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -122,7 +124,13 @@ public class QuestionRepositoryTest {
         ArgumentCaptor<Callback<QuestionsListResponse>> callbackCaptor = 
             ArgumentCaptor.forClass(Callback.class);
         
+        CountDownLatch latch = new CountDownLatch(2);
+        
         QuestionRepository.SyncCallback syncCallback = mock(QuestionRepository.SyncCallback.class);
+        doAnswer(invocation -> {
+            latch.countDown();
+            return null;
+        }).when(questionDao).insert(any(QuestionEntity.class));
         
         // Act
         repository.syncQuestionsFromServer(TEST_TOKEN, TEST_USER_ID, TEST_ROLE_STUDENT, syncCallback);
@@ -130,8 +138,8 @@ public class QuestionRepositoryTest {
         verify(questionsCall).enqueue(callbackCaptor.capture());
         callbackCaptor.getValue().onResponse(questionsCall, Response.success(response));
         
-        // 等待异步操作
-        Thread.sleep(500);
+        // 等待异步操作（最多1秒）
+        assertTrue("Async operation timed out", latch.await(1, TimeUnit.SECONDS));
         
         // Assert - 应该保存问题到本地数据库
         verify(questionDao, atLeast(2)).insert(any(QuestionEntity.class));
@@ -225,7 +233,13 @@ public class QuestionRepositoryTest {
         ArgumentCaptor<Callback<QuestionsListResponse>> callbackCaptor = 
             ArgumentCaptor.forClass(Callback.class);
         
+        CountDownLatch latch = new CountDownLatch(1);
+        
         QuestionRepository.SyncCallback syncCallback = mock(QuestionRepository.SyncCallback.class);
+        doAnswer(invocation -> {
+            latch.countDown();
+            return null;
+        }).when(syncCallback).onPageLoaded(anyBoolean());
         
         // Act
         repository.syncQuestionsFromServer(
@@ -241,8 +255,8 @@ public class QuestionRepositoryTest {
         verify(questionsCall).enqueue(callbackCaptor.capture());
         callbackCaptor.getValue().onResponse(questionsCall, Response.success(response));
         
-        // 等待异步操作
-        Thread.sleep(500);
+        // 等待异步操作（最多1秒）
+        assertTrue("Async operation timed out", latch.await(1, TimeUnit.SECONDS));
         
         // Assert - 应该通知有更多数据
         verify(syncCallback).onPageLoaded(true);
@@ -271,7 +285,13 @@ public class QuestionRepositoryTest {
         ArgumentCaptor<Callback<QuestionsListResponse>> callbackCaptor = 
             ArgumentCaptor.forClass(Callback.class);
         
+        CountDownLatch latch = new CountDownLatch(1);
+        
         QuestionRepository.SyncCallback syncCallback = mock(QuestionRepository.SyncCallback.class);
+        doAnswer(invocation -> {
+            latch.countDown();
+            return null;
+        }).when(syncCallback).onSuccess(anyInt());
         
         // Act
         repository.syncQuestionsFromServer(TEST_TOKEN, TEST_USER_ID, TEST_ROLE_STUDENT, syncCallback);
@@ -279,8 +299,8 @@ public class QuestionRepositoryTest {
         verify(questionsCall).enqueue(callbackCaptor.capture());
         callbackCaptor.getValue().onResponse(questionsCall, Response.success(response));
         
-        // 等待异步操作
-        Thread.sleep(300);
+        // 等待异步操作（最多1秒）
+        assertTrue("Async operation timed out", latch.await(1, TimeUnit.SECONDS));
         
         // Assert
         verify(syncCallback).onSuccess(0);

@@ -1,5 +1,10 @@
 package com.dowdah.asknow.data.model;
 
+import androidx.annotation.NonNull;
+
+/**
+ * 注册请求数据模型
+ */
 public class RegisterRequest {
     private String username;
     private String password;

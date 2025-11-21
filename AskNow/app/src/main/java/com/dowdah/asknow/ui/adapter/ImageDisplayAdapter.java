@@ -1,7 +1,5 @@
 package com.dowdah.asknow.ui.adapter;
 
-import android.graphics.drawable.Drawable;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -11,13 +9,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.bumptech.glide.Glide;
-import com.bumptech.glide.load.DataSource;
-import com.bumptech.glide.load.engine.GlideException;
-import com.bumptech.glide.request.RequestListener;
-import com.bumptech.glide.request.target.Target;
-import com.dowdah.asknow.BuildConfig;
 import com.dowdah.asknow.R;
+import com.dowdah.asknow.utils.ImageBindingHelper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,27 +20,44 @@ import java.util.List;
  */
 public class ImageDisplayAdapter extends RecyclerView.Adapter<ImageDisplayAdapter.ViewHolder> {
     
-    private static final String TAG = "ImageDisplayAdapter";
-    
     private List<String> imagePaths = new ArrayList<>();
     private OnImageClickListener clickListener;
     
+    /**
+     * 图片点击监听器接口
+     */
     public interface OnImageClickListener {
-        void onImageClick(int position, String imagePath);
+        void onImageClick(int position, @NonNull String imagePath);
     }
     
     public ImageDisplayAdapter() {
     }
     
-    public void setClickListener(OnImageClickListener listener) {
+    /**
+     * 设置图片点击监听器
+     * 
+     * @param listener 图片点击监听器
+     */
+    public void setClickListener(@Nullable OnImageClickListener listener) {
         this.clickListener = listener;
     }
     
-    public void setImages(List<String> images) {
+    /**
+     * 设置图片列表
+     * 
+     * @param images 图片路径列表
+     */
+    public void setImages(@NonNull List<String> images) {
         this.imagePaths = new ArrayList<>(images);
         notifyDataSetChanged();
     }
     
+    /**
+     * 获取图片列表
+     * 
+     * @return 图片路径列表的副本
+     */
+    @NonNull
     public List<String> getImages() {
         return new ArrayList<>(imagePaths);
     }
@@ -64,21 +74,8 @@ public class ImageDisplayAdapter extends RecyclerView.Adapter<ImageDisplayAdapte
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         String imagePath = imagePaths.get(position);
         
-        // 构建完整的图片 URL
-        String baseUrl = BuildConfig.BASE_URL.replaceAll("/$", "");
-        String imageUrl = baseUrl + imagePath;
-        
-        // 计算图片尺寸（120dp转换为px）
-        int imageSizePx = (int) (120 * holder.itemView.getContext().getResources().getDisplayMetrics().density);
-        
-        // 使用优化的 Glide 加载配置
-        Glide.with(holder.itemView.getContext())
-                .load(imageUrl)
-                .override(imageSizePx, imageSizePx)  // 限制图片尺寸，避免加载原图
-                .centerCrop()
-                .placeholder(R.drawable.ic_image_placeholder)
-                .error(R.drawable.ic_image_error)
-                .into(holder.imageView);
+        // 使用ImageBindingHelper加载缩略图
+        ImageBindingHelper.loadServerImageThumbnail(holder.itemView.getContext(), imagePath, holder.imageView);
         
         // 图片点击事件
         holder.imageView.setOnClickListener(v -> {

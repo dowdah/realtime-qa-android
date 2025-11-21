@@ -3,9 +3,11 @@ package com.dowdah.asknow.ui.student;
 import android.app.Application;
 
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule;
+import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Observer;
 
 import com.dowdah.asknow.constants.QuestionStatus;
+import com.dowdah.asknow.data.model.WebSocketMessage;
 import com.dowdah.asknow.data.api.ApiService;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
@@ -91,6 +93,10 @@ public class StudentViewModelTest {
         
         when(prefsManager.getUserId()).thenReturn(TEST_USER_ID);
         when(prefsManager.getToken()).thenReturn(TEST_TOKEN);
+        
+        // Mock WebSocketManager.getIncomingMessage() 以避免 NullPointerException
+        MutableLiveData<WebSocketMessage> mockIncomingMessage = new MutableLiveData<>();
+        when(webSocketManager.getIncomingMessage()).thenReturn(mockIncomingMessage);
         
         viewModel = new StudentViewModel(
             application,

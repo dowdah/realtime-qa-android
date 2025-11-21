@@ -22,8 +22,10 @@ import org.mockito.junit.MockitoJUnitRunner;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import retrofit2.Call;
 
@@ -132,13 +134,19 @@ public class MessageRepositoryTest {
         JsonObject data = new JsonObject();
         data.addProperty("content", "Test message");
         
+        CountDownLatch latch = new CountDownLatch(1);
+        
         when(webSocketClient.isConnected()).thenReturn(false);
+        doAnswer(invocation -> {
+            latch.countDown();
+            return null;
+        }).when(pendingMessageDao).insert(any(PendingMessageEntity.class));
         
         // Act
         repository.sendMessage(messageType, data);
         
-        // 等待异步操作完成
-        Thread.sleep(200);
+        // 等待异步操作完成（最多1秒）
+        assertTrue("Async operation timed out", latch.await(1, TimeUnit.SECONDS));
         
         // Assert - 应该保存到待发消息队列
         ArgumentCaptor<PendingMessageEntity> entityCaptor = 
@@ -181,14 +189,20 @@ public class MessageRepositoryTest {
         
         List<PendingMessageEntity> pendingMessages = Arrays.asList(pending1, pending2);
         
+        CountDownLatch latch = new CountDownLatch(2);
+        
         when(pendingMessageDao.getAllPendingMessages()).thenReturn(pendingMessages);
         when(webSocketClient.isConnected()).thenReturn(true);
+        doAnswer(invocation -> {
+            latch.countDown();
+            return null;
+        }).when(webSocketClient).sendMessage(any(WebSocketMessage.class));
         
         // Act
         repository.onWebSocketConnected();
         
-        // 等待异步操作完成
-        Thread.sleep(300);
+        // 等待异步操作完成（最多1秒）
+        assertTrue("Async operation timed out", latch.await(1, TimeUnit.SECONDS));
         
         // Assert - 应该发送所有待发消息
         verify(webSocketClient, times(2)).sendMessage(any(WebSocketMessage.class));
@@ -205,13 +219,19 @@ public class MessageRepositoryTest {
         pendingMessage.setId(1L);
         pendingMessage.setMessageId(messageId);
         
+        CountDownLatch latch = new CountDownLatch(1);
+        
         when(pendingMessageDao.getMessageByMessageId(messageId)).thenReturn(pendingMessage);
+        doAnswer(invocation -> {
+            latch.countDown();
+            return null;
+        }).when(pendingMessageDao).deleteMessage(anyLong());
         
         // Act
         repository.onMessageAcknowledged(messageId);
         
-        // 等待异步操作完成
-        Thread.sleep(200);
+        // 等待异步操作完成（最多1秒）
+        assertTrue("Async operation timed out", latch.await(1, TimeUnit.SECONDS));
         
         // Assert - 应该删除待发消息
         verify(pendingMessageDao).deleteMessage(1L);
@@ -234,14 +254,20 @@ public class MessageRepositoryTest {
         
         List<PendingMessageEntity> pendingMessages = Arrays.asList(exceededMessage);
         
+        CountDownLatch latch = new CountDownLatch(1);
+        
         when(pendingMessageDao.getAllPendingMessages()).thenReturn(pendingMessages);
         when(webSocketClient.isConnected()).thenReturn(true);
+        doAnswer(invocation -> {
+            latch.countDown();
+            return null;
+        }).when(pendingMessageDao).deleteMessage(anyLong());
         
         // Act
         repository.onWebSocketConnected();
         
-        // 等待异步操作完成
-        Thread.sleep(200);
+        // 等待异步操作完成（最多1秒）
+        assertTrue("Async operation timed out", latch.await(1, TimeUnit.SECONDS));
         
         // Assert - 应该删除超过重试次数的消息
         verify(pendingMessageDao).deleteMessage(1L);
@@ -260,16 +286,22 @@ public class MessageRepositoryTest {
         long questionId = 1L;
         long currentUserId = 2L;
         
+        CountDownLatch latch = new CountDownLatch(1);
+        
         when(apiService.markMessagesAsRead(anyString(), any(JsonObject.class)))
             .thenReturn(apiCall);
+        doAnswer(invocation -> {
+            latch.countDown();
+            return null;
+        }).when(messageDao).markMessagesAsRead(anyLong(), anyLong());
         
         MessageRepository.MarkReadCallback callback = mock(MessageRepository.MarkReadCallback.class);
         
         // Act
         repository.markMessagesAsRead(token, questionId, currentUserId, callback);
         
-        // 等待异步操作完成
-        Thread.sleep(300);
+        // 等待异步操作完成（最多1秒）
+        assertTrue("Async operation timed out", latch.await(1, TimeUnit.SECONDS));
         
         // Assert - 应该更新本地数据库
         verify(messageDao).markMessagesAsRead(eq(questionId), eq(currentUserId));
@@ -285,16 +317,22 @@ public class MessageRepositoryTest {
         long currentUserId = 2L;
         int unreadCount = 5;
         
+        CountDownLatch latch = new CountDownLatch(1);
+        
         when(messageDao.getUnreadMessageCount(questionId, currentUserId))
             .thenReturn(unreadCount);
         
         MessageRepository.UnreadCountCallback callback = mock(MessageRepository.UnreadCountCallback.class);
+        doAnswer(invocation -> {
+            latch.countDown();
+            return null;
+        }).when(callback).onCountReceived(anyInt());
         
         // Act
         repository.getUnreadMessageCountAsync(questionId, currentUserId, callback);
         
-        // 等待异步操作完成
-        Thread.sleep(200);
+        // 等待异步操作完成（最多1秒）
+        assertTrue("Async operation timed out", latch.await(1, TimeUnit.SECONDS));
         
         // Assert
         verify(callback).onCountReceived(unreadCount);

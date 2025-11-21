@@ -27,7 +27,7 @@ android {
         release {
             isMinifyEnabled = false
             // 生产环境使用实际服务器地址
-            buildConfigField("String", "BASE_URL", "\"http://frp-cup.com:13885/\"")
+            buildConfigField("String", "BASE_URL", "\"http://101.133.108.172:8000/\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -45,6 +45,15 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    
+    // 单元测试配置
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true  // Android SDK 类返回默认值而不抛异常
+            isIncludeAndroidResources = true  // 支持访问 Android 资源
+        }
+    }
+    
     buildFeatures {
         viewBinding = true
         buildConfig = true
@@ -92,6 +101,7 @@ dependencies {
     implementation(libs.lifecycle.viewmodel)
     implementation(libs.lifecycle.livedata)
     implementation(libs.lifecycle.runtime)
+    implementation(libs.lifecycle.process)
     
     // SwipeRefreshLayout
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")

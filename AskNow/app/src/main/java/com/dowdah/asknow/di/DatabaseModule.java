@@ -9,9 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
 
 import com.dowdah.asknow.data.local.AppDatabase;
 import com.dowdah.asknow.data.local.dao.MessageDao;
-import com.dowdah.asknow.data.local.dao.PendingMessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
-import com.dowdah.asknow.data.local.dao.UserDao;
 
 import javax.inject.Singleton;
 
@@ -21,6 +19,10 @@ import dagger.hilt.InstallIn;
 import dagger.hilt.android.qualifiers.ApplicationContext;
 import dagger.hilt.components.SingletonComponent;
 
+/**
+ * 数据库模块
+ * 提供数据库相关的依赖注入（AppDatabase、各种DAO等）
+ */
 @Module
 @InstallIn(SingletonComponent.class)
 public class DatabaseModule {
@@ -47,6 +49,16 @@ public class DatabaseModule {
         }
     };
     
+    // 数据库迁移：版本7到版本8
+    // 删除pending_messages表，因为不再通过WebSocket发送消息
+    static final Migration MIGRATION_7_8 = new Migration(7, 8) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            // 删除 pending_messages 表
+            database.execSQL("DROP TABLE IF EXISTS pending_messages");
+        }
+    };
+    
     @Provides
     @Singleton
     public AppDatabase provideAppDatabase(@ApplicationContext Context context) {
@@ -55,27 +67,15 @@ public class DatabaseModule {
                 AppDatabase.class,
                 DATABASE_NAME
             )
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_7_8)
             .fallbackToDestructiveMigration()
             .build();
     }
     
     @Provides
     @Singleton
-    public UserDao provideUserDao(AppDatabase database) {
-        return database.userDao();
-    }
-    
-    @Provides
-    @Singleton
     public QuestionDao provideQuestionDao(AppDatabase database) {
         return database.questionDao();
-    }
-    
-    @Provides
-    @Singleton
-    public PendingMessageDao providePendingMessageDao(AppDatabase database) {
-        return database.pendingMessageDao();
     }
     
     @Provides

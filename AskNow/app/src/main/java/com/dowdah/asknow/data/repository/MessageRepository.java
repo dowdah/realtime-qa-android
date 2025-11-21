@@ -7,39 +7,41 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.util.Log;
 
-import com.dowdah.asknow.data.api.WebSocketClient;
-import com.dowdah.asknow.data.local.dao.PendingMessageDao;
-import com.dowdah.asknow.data.local.entity.PendingMessageEntity;
-import com.dowdah.asknow.data.model.WebSocketMessage;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import com.dowdah.asknow.utils.ErrorHandler;
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
-import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
 import dagger.hilt.android.qualifiers.ApplicationContext;
 
+/**
+ * 消息仓库
+ * 
+ * 负责消息相关的数据操作，包括：
+ * - 标记消息为已读（本地数据库 + 服务器同步）
+ * - 获取未读消息数量
+ * - 监控网络状态
+ * 
+ * 注意：消息发送通过 HTTP API 在 ChatViewModel 中处理，不在此类中
+ */
 @Singleton
 public class MessageRepository {
     private static final String TAG = "MessageRepository";
-    // 使用 AppConstants 替代硬编码值
+    // 重试相关常量（用于标记已读功能）
     private static final int MAX_RETRY_COUNT = com.dowdah.asknow.constants.AppConstants.MAX_RETRY_COUNT;
     private static final long INITIAL_RETRY_DELAY = com.dowdah.asknow.constants.AppConstants.INITIAL_RETRY_DELAY_MS;
     private static final int RETRY_BACKOFF_MULTIPLIER = com.dowdah.asknow.constants.AppConstants.RETRY_BACKOFF_MULTIPLIER;
     
-    private final PendingMessageDao pendingMessageDao;
     private final com.dowdah.asknow.data.local.dao.MessageDao messageDao;
     private final com.dowdah.asknow.data.api.ApiService apiService;
     private final Context context;
     private final ExecutorService executor;
-    private final Gson gson;
-    private WebSocketClient webSocketClient;
     private boolean isNetworkAvailable = false;
     private ConnectivityManager.NetworkCallback networkCallback;
     private NetworkAvailableListener networkAvailableListener;
@@ -53,132 +55,54 @@ public class MessageRepository {
     
     @Inject
     public MessageRepository(
-        @ApplicationContext Context context, 
-        PendingMessageDao pendingMessageDao,
-        com.dowdah.asknow.data.local.dao.MessageDao messageDao,
-        com.dowdah.asknow.data.api.ApiService apiService,
-        @javax.inject.Named("single") ExecutorService executor,
-        Gson gson
+        @NonNull @ApplicationContext Context context, 
+        @NonNull com.dowdah.asknow.data.local.dao.MessageDao messageDao,
+        @NonNull com.dowdah.asknow.data.api.ApiService apiService,
+        @NonNull @javax.inject.Named("single") ExecutorService executor
     ) {
         this.context = context;
-        this.pendingMessageDao = pendingMessageDao;
         this.messageDao = messageDao;
         this.apiService = apiService;
         this.executor = executor;
-        this.gson = gson;
         
         registerNetworkCallback();
         checkNetworkStatus();
     }
     
-    public void setWebSocketClient(WebSocketClient client) {
-        this.webSocketClient = client;
-    }
-    
     /**
      * 设置网络恢复监听器
+     * 
+     * @param listener 网络恢复监听器
      */
-    public void setNetworkAvailableListener(NetworkAvailableListener listener) {
+    public void setNetworkAvailableListener(@Nullable NetworkAvailableListener listener) {
         this.networkAvailableListener = listener;
     }
     
     /**
-     * Send message through WebSocket. If offline, save to database for later.
+     * 检查线程池是否可用
+     * 
+     * 防止在线程池关闭后提交任务导致 RejectedExecutionException
+     * 
+     * @return true 如果线程池可用，false 否则
      */
-    public void sendMessage(String messageType, JsonObject data) {
-        String messageId = UUID.randomUUID().toString();
-        WebSocketMessage message = new WebSocketMessage(
-            messageType,
-            data,
-            String.valueOf(System.currentTimeMillis()),
-            messageId
-        );
-        
-        if (webSocketClient != null && webSocketClient.isConnected()) {
-            // Send directly if connected
-            webSocketClient.sendMessage(message);
-            Log.d(TAG, "Message sent directly: " + messageId);
-        } else {
-            // Save to database if offline
-            savePendingMessage(messageType, message, messageId);
-            Log.d(TAG, "Message saved for later: " + messageId);
+    private boolean isExecutorAvailable() {
+        if (executor == null) {
+            Log.e(TAG, "Executor is null");
+            return false;
         }
+        if (executor.isShutdown()) {
+            Log.e(TAG, "Executor is shutdown");
+            return false;
+        }
+        if (executor.isTerminated()) {
+            Log.e(TAG, "Executor is terminated");
+            return false;
+        }
+        return true;
     }
     
     /**
-     * Save message to database for offline sending
-     */
-    private void savePendingMessage(String messageType, WebSocketMessage message, String messageId) {
-        executor.execute(() -> {
-            String payload = gson.toJson(message);
-            PendingMessageEntity entity = new PendingMessageEntity(
-                messageType,
-                payload,
-                0,
-                System.currentTimeMillis(),
-                messageId
-            );
-            pendingMessageDao.insert(entity);
-            Log.d(TAG, "Pending message saved to database");
-        });
-    }
-    
-    /**
-     * Called when WebSocket connection is established
-     */
-    public void onWebSocketConnected() {
-        Log.d(TAG, "WebSocket connected, sending pending messages");
-        sendPendingMessages();
-    }
-    
-    /**
-     * Send all pending messages from database
-     */
-    private void sendPendingMessages() {
-        executor.execute(() -> {
-            List<PendingMessageEntity> pendingMessages = pendingMessageDao.getAllPendingMessages();
-            Log.d(TAG, "Found " + pendingMessages.size() + " pending messages");
-            
-            for (PendingMessageEntity entity : pendingMessages) {
-                if (entity.getRetryCount() >= MAX_RETRY_COUNT) {
-                    Log.w(TAG, "Message exceeded max retries, removing: " + entity.getMessageId());
-                    pendingMessageDao.deleteMessage(entity.getId());
-                    continue;
-                }
-                
-                try {
-                    WebSocketMessage message = gson.fromJson(entity.getPayload(), WebSocketMessage.class);
-                    if (webSocketClient != null && webSocketClient.isConnected()) {
-                        webSocketClient.sendMessage(message);
-                        Log.d(TAG, "Pending message sent: " + entity.getMessageId());
-                        // Don't delete yet, wait for ACK from server
-                    } else {
-                        Log.w(TAG, "WebSocket disconnected during sending");
-                        break;
-                    }
-                } catch (Exception e) {
-                    Log.e(TAG, "Error sending pending message", e);
-                    pendingMessageDao.updateRetryCount(entity.getId(), entity.getRetryCount() + 1);
-                }
-            }
-        });
-    }
-    
-    /**
-     * Called when ACK is received from server
-     */
-    public void onMessageAcknowledged(String messageId) {
-        executor.execute(() -> {
-            PendingMessageEntity entity = pendingMessageDao.getMessageByMessageId(messageId);
-            if (entity != null) {
-                pendingMessageDao.deleteMessage(entity.getId());
-                Log.d(TAG, "Pending message acknowledged and removed: " + messageId);
-            }
-        });
-    }
-    
-    /**
-     * Register network callback to monitor connectivity
+     * 注册网络回调以监控网络连接状态
      */
     private void registerNetworkCallback() {
         ConnectivityManager connectivityManager = 
@@ -211,7 +135,7 @@ public class MessageRepository {
     }
     
     /**
-     * Check current network status
+     * 检查当前网络状态
      */
     private void checkNetworkStatus() {
         ConnectivityManager connectivityManager = 
@@ -230,7 +154,7 @@ public class MessageRepository {
     }
     
     /**
-     * Called when network becomes available
+     * 网络恢复可用时调用
      * 通知监听器而不是直接连接，避免重复连接
      */
     private void onNetworkAvailable() {
@@ -245,20 +169,13 @@ public class MessageRepository {
     }
     
     /**
-     * Get count of pending messages
+     * 获取指定问题的未读消息数量（LiveData）
+     * 
+     * @param questionId 问题ID
+     * @param currentUserId 当前用户ID
+     * @return 未读消息数量的LiveData
      */
-    public int getPendingMessageCount() {
-        try {
-            return pendingMessageDao.getAllPendingMessages().size();
-        } catch (Exception e) {
-            Log.e(TAG, "Error getting pending message count", e);
-            return 0;
-        }
-    }
-    
-    /**
-     * 获取指定问题的未读消息数量
-     */
+    @NonNull
     public androidx.lifecycle.LiveData<Integer> getUnreadMessageCount(long questionId, long currentUserId) {
         return messageDao.getUnreadMessageCountLive(questionId, currentUserId);
     }
@@ -271,7 +188,16 @@ public class MessageRepository {
      * @param currentUserId 当前用户ID
      * @param callback 回调接口
      */
-    public void getUnreadMessageCountAsync(long questionId, long currentUserId, UnreadCountCallback callback) {
+    public void getUnreadMessageCountAsync(long questionId, long currentUserId, @Nullable UnreadCountCallback callback) {
+        // 检查线程池是否可用
+        if (!isExecutorAvailable()) {
+            Log.e(TAG, "Cannot get unread count: executor not available");
+            if (callback != null) {
+                callback.onError("线程池不可用，无法获取未读消息数量");
+            }
+            return;
+        }
+        
         executor.execute(() -> {
             try {
                 int count = messageDao.getUnreadMessageCount(questionId, currentUserId);
@@ -292,13 +218,27 @@ public class MessageRepository {
      */
     public interface UnreadCountCallback {
         void onCountReceived(int count);
-        void onError(String error);
+        void onError(@NonNull String error);
     }
     
     /**
      * 标记指定问题的所有消息为已读
+     * 
+     * @param token 认证令牌
+     * @param questionId 问题ID
+     * @param currentUserId 当前用户ID
+     * @param callback 回调接口
      */
-    public void markMessagesAsRead(String token, long questionId, long currentUserId, MarkReadCallback callback) {
+    public void markMessagesAsRead(@NonNull String token, long questionId, long currentUserId, @Nullable MarkReadCallback callback) {
+        // 检查线程池是否可用
+        if (!isExecutorAvailable()) {
+            Log.e(TAG, "Cannot mark messages as read: executor not available");
+            if (callback != null) {
+                callback.onError("线程池不可用，无法标记消息为已读");
+            }
+            return;
+        }
+        
         executor.execute(() -> {
             try {
                 // 先更新本地数据库
@@ -357,18 +297,32 @@ public class MessageRepository {
      */
     public interface MarkReadCallback {
         void onSuccess();
-        void onError(String error);
+        void onError(@NonNull String error);
     }
     
     /**
      * 带重试机制的标记已读
      * 使用指数退避策略重试失败的网络请求
+     * 
+     * @param token 认证令牌
+     * @param questionId 问题ID
+     * @param currentUserId 当前用户ID
+     * @param callback 回调接口
      */
-    public void markMessagesAsReadWithRetry(String token, long questionId, long currentUserId, MarkReadCallback callback) {
+    public void markMessagesAsReadWithRetry(@NonNull String token, long questionId, long currentUserId, @Nullable MarkReadCallback callback) {
         markMessagesAsReadWithRetry(token, questionId, currentUserId, callback, 0);
     }
     
     private void markMessagesAsReadWithRetry(String token, long questionId, long currentUserId, MarkReadCallback callback, int retryCount) {
+        // 检查线程池是否可用
+        if (!isExecutorAvailable()) {
+            Log.e(TAG, "Cannot mark messages as read with retry: executor not available");
+            if (callback != null) {
+                callback.onError("线程池不可用，无法标记消息为已读");
+            }
+            return;
+        }
+        
         executor.execute(() -> {
             try {
                 // 先更新本地数据库
@@ -440,8 +394,8 @@ public class MessageRepository {
     }
     
     /**
-     * Clean up resources to prevent memory leaks
-     * Should be called when the repository is no longer needed
+     * 清理资源以防止内存泄漏
+     * 当Repository不再需要时应调用此方法
      */
     public void cleanup() {
         // Unregister network callback

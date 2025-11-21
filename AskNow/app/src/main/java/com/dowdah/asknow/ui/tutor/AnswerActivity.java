@@ -20,8 +20,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import com.bumptech.glide.Glide;
 import com.dowdah.asknow.BuildConfig;
 import com.dowdah.asknow.R;
-import com.dowdah.asknow.constants.QuestionStatus;
-import com.dowdah.asknow.data.api.ApiService;
+import com.dowdah.asknow.constants.enums.QuestionStatus;
 import com.dowdah.asknow.data.local.dao.MessageDao;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
@@ -30,7 +29,6 @@ import com.dowdah.asknow.ui.adapter.ImageDisplayAdapter;
 import com.dowdah.asknow.ui.adapter.MessageAdapter;
 import com.dowdah.asknow.ui.chat.ChatViewModel;
 import com.dowdah.asknow.ui.image.ImagePreviewActivity;
-import com.dowdah.asknow.utils.ImageMessageHelper;
 import com.dowdah.asknow.utils.SharedPreferencesManager;
 
 import java.util.ArrayList;
@@ -54,7 +52,8 @@ public class AnswerActivity extends AppCompatActivity {
     private ExecutorService executor;
     private boolean isActivityInForeground = false;
     private boolean shouldScrollToBottom = false;
-    private ImageMessageHelper imageMessageHelper;
+    private ImageDisplayAdapter imageDisplayAdapter; // 保持图片适配器引用，避免重复创建
+    private String currentImagePaths = null; // 当前显示的图片路径（用于判断是否需要更新）
     
     @Inject
     QuestionDao questionDao;
@@ -65,9 +64,6 @@ public class AnswerActivity extends AppCompatActivity {
     @Inject
     SharedPreferencesManager prefsManager;
     
-    @Inject
-    ApiService apiService;
-    
     /**
      * 图片选择结果处理
      */
@@ -77,7 +73,8 @@ public class AnswerActivity extends AppCompatActivity {
             if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                 Uri imageUri = result.getData().getData();
                 if (imageUri != null) {
-                    imageMessageHelper.uploadAndSendImage(imageUri);
+                    // 直接调用 ViewModel 上传图片（符合 MVVM 架构）
+                    chatViewModel.uploadAndSendImage(imageUri, questionId);
                 }
             }
         }
@@ -114,15 +111,6 @@ public class AnswerActivity extends AppCompatActivity {
         chatViewModel = new ViewModelProvider(this).get(ChatViewModel.class);
         executor = Executors.newSingleThreadExecutor();
         
-        // 初始化图片消息助手
-        imageMessageHelper = new ImageMessageHelper(
-            this,
-            apiService,
-            prefsManager,
-            chatViewModel,
-            questionId
-        );
-        
         setupToolbar();
         setupRecyclerView();
         loadQuestionDetails();
@@ -153,54 +141,96 @@ public class AnswerActivity extends AppCompatActivity {
             imagePaths.add(imagePath);
             openImagePreview(imagePaths, 0);
         });
+        
+        // 设置消息重试监听器
+        messageAdapter.setMessageRetryListener((messageId, content, messageType) -> {
+            chatViewModel.retryMessage(messageId, content, messageType);
+        });
     }
     
+    /**
+     * 加载问题详情并使用 LiveData 观察问题变化
+     * 
+     * 改进点：
+     * - 使用 LiveData 实时观察问题状态变化（替代一次性查询）
+     * - 智能更新：仅在 imagePaths 变化时重新设置图片适配器
+     * - 保持适配器引用，避免重复创建导致的性能问题
+     */
     private void loadQuestionDetails() {
-        if (executor != null && !executor.isShutdown()) {
-            executor.execute(() -> {
-                QuestionEntity question = questionDao.getQuestionById(questionId);
-                runOnUiThread(() -> {
-                    if (question != null) {
-                        currentStatus = question.getStatus();
-                        binding.tvContent.setText(question.getContent());
-                        binding.tvStatus.setText(getStatusText(currentStatus));
-                        
-                        // 显示多张图片
-                        if (question.getImagePaths() != null && !question.getImagePaths().isEmpty()) {
+        // 使用 LiveData 观察问题状态的变化，实现实时更新
+        questionDao.getQuestionByIdLive(questionId).observe(this, question -> {
+            if (question != null) {
+                currentStatus = question.getStatus();
+                binding.tvContent.setText(question.getContent());
+                binding.tvStatus.setText(getStatusText(currentStatus));
+                
+                // 显示多张图片 - 异步解析 JSON
+                final String imagePathsJson = question.getImagePaths();
+                
+                // 智能判断：只有当 imagePaths 发生变化时才重新设置适配器
+                if (!java.util.Objects.equals(currentImagePaths, imagePathsJson)) {
+                    currentImagePaths = imagePathsJson;
+                    
+                    if (imagePathsJson != null && !imagePathsJson.isEmpty()) {
+                        executor.execute(() -> {
                             try {
                                 List<String> imagePaths = new com.google.gson.Gson().fromJson(
-                                    question.getImagePaths(), 
+                                    imagePathsJson, 
                                     new com.google.gson.reflect.TypeToken<List<String>>(){}.getType()
                                 );
                                 
-                                if (imagePaths != null && !imagePaths.isEmpty()) {
-                                    ImageDisplayAdapter imageAdapter = new ImageDisplayAdapter();
-                                    binding.rvQuestionImages.setLayoutManager(
-                                        new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-                                    );
-                                    binding.rvQuestionImages.setAdapter(imageAdapter);
-                                    imageAdapter.setImages(imagePaths);
-                                    binding.rvQuestionImages.setVisibility(View.VISIBLE);
+                                runOnUiThread(() -> {
+                                    // 防止Activity销毁后访问binding
+                                    if (binding == null || isFinishing() || isDestroyed()) {
+                                        return;
+                                    }
                                     
-                                    // 设置图片点击监听器
-                                    imageAdapter.setClickListener((position, imagePath) -> {
-                                        openImagePreview(new ArrayList<>(imagePaths), position);
-                                    });
-                                } else {
-                                    binding.rvQuestionImages.setVisibility(View.GONE);
-                                }
+                                    if (imagePaths != null && !imagePaths.isEmpty()) {
+                                        // 如果适配器未初始化，则创建并设置
+                                        if (imageDisplayAdapter == null) {
+                                            imageDisplayAdapter = new ImageDisplayAdapter();
+                                            LinearLayoutManager layoutManager = new LinearLayoutManager(
+                                                this, LinearLayoutManager.HORIZONTAL, false
+                                            );
+                                            binding.rvQuestionImages.setLayoutManager(layoutManager);
+                                            
+                                            // 优化 RecyclerView 配置
+                                            binding.rvQuestionImages.setHasFixedSize(true);
+                                            binding.rvQuestionImages.setItemViewCacheSize(10);
+                                            
+                                            binding.rvQuestionImages.setAdapter(imageDisplayAdapter);
+                                            
+                                            // 设置图片点击监听器
+                                            imageDisplayAdapter.setClickListener((position, imagePath) -> {
+                                                openImagePreview(new ArrayList<>(imagePaths), position);
+                                            });
+                                        }
+                                        
+                                        // 更新图片列表
+                                        imageDisplayAdapter.setImages(imagePaths);
+                                        binding.rvQuestionImages.setVisibility(View.VISIBLE);
+                                    } else {
+                                        binding.rvQuestionImages.setVisibility(View.GONE);
+                                    }
+                                });
                             } catch (Exception e) {
-                                binding.rvQuestionImages.setVisibility(View.GONE);
+                                runOnUiThread(() -> {
+                                    // 防止Activity销毁后访问binding
+                                    if (binding != null && !isFinishing() && !isDestroyed()) {
+                                        binding.rvQuestionImages.setVisibility(View.GONE);
+                                    }
+                                });
                             }
-                        } else {
-                            binding.rvQuestionImages.setVisibility(View.GONE);
-                        }
-                        
-                        updateButtonStates(currentStatus);
+                        });
+                    } else {
+                        binding.rvQuestionImages.setVisibility(View.GONE);
                     }
-                });
-            });
-        }
+                }
+                
+                // 根据问题状态更新按钮状态
+                updateButtonStates(currentStatus);
+            }
+        });
     }
     
     private String getStatusText(String status) {
@@ -225,25 +255,43 @@ public class AnswerActivity extends AppCompatActivity {
         }
         switch (status) {
             case QuestionStatus.PENDING:
+                // 待接取状态：显示接受按钮，禁用所有输入功能
                 binding.btnAccept.setVisibility(View.VISIBLE);
                 binding.btnAccept.setEnabled(true);
                 binding.btnClose.setVisibility(View.GONE);
                 binding.etMessage.setEnabled(false);
                 binding.btnSend.setEnabled(false);
+                binding.btnSelectImage.setEnabled(false);
+                
+                // 视觉反馈：禁用时降低透明度
+                binding.btnSend.setAlpha(0.5f);
+                binding.btnSelectImage.setAlpha(0.5f);
                 break;
             case QuestionStatus.IN_PROGRESS:
+                // 进行中状态：启用所有输入功能，显示关闭按钮
                 binding.btnAccept.setVisibility(View.GONE);
                 binding.btnClose.setVisibility(View.VISIBLE);
                 binding.btnClose.setEnabled(true);
                 binding.etMessage.setEnabled(true);
                 binding.btnSend.setEnabled(true);
+                binding.btnSelectImage.setEnabled(true);
+                
+                // 视觉反馈：启用时恢复透明度
+                binding.btnSend.setAlpha(1.0f);
+                binding.btnSelectImage.setAlpha(1.0f);
                 break;
             case QuestionStatus.CLOSED:
+                // 已关闭状态：禁用所有输入和操作功能
                 binding.btnAccept.setVisibility(View.GONE);
                 binding.btnClose.setVisibility(View.VISIBLE);
                 binding.btnClose.setEnabled(false);
                 binding.etMessage.setEnabled(false);
                 binding.btnSend.setEnabled(false);
+                binding.btnSelectImage.setEnabled(false);
+                
+                // 视觉反馈：禁用时降低透明度
+                binding.btnSend.setAlpha(0.5f);
+                binding.btnSelectImage.setAlpha(0.5f);
                 break;
         }
     }
@@ -299,6 +347,16 @@ public class AnswerActivity extends AppCompatActivity {
                 binding.etMessage.setText("");
             }
         });
+        
+        chatViewModel.getUploadProgress().observe(this, progress -> {
+            if (progress != null) {
+                if (progress.isComplete()) {
+                    // 图片上传完成，消息将自动发送
+                } else if (progress.hasError()) {
+                    // 错误已在 errorMessage 中处理
+                }
+            }
+        });
     }
     
     private void setupInputArea() {
@@ -343,19 +401,23 @@ public class AnswerActivity extends AppCompatActivity {
         binding.btnClose.setOnClickListener(v -> closeQuestion());
     }
     
+    /**
+     * 接受问题
+     * 
+     * 注意：不再手动更新 UI，LiveData observer 会自动响应数据库变化并更新界面
+     */
     private void acceptQuestion() {
         chatViewModel.acceptQuestion(questionId);
-        currentStatus = QuestionStatus.IN_PROGRESS;
-        binding.tvStatus.setText(getStatusText(currentStatus));
-        updateButtonStates(currentStatus);
         Toast.makeText(this, R.string.question_accepted, Toast.LENGTH_SHORT).show();
     }
     
+    /**
+     * 关闭问题
+     * 
+     * 注意：不再手动更新 UI，LiveData observer 会自动响应数据库变化并更新界面
+     */
     private void closeQuestion() {
         chatViewModel.closeQuestion(questionId);
-        currentStatus = QuestionStatus.CLOSED;
-        binding.tvStatus.setText(getStatusText(currentStatus));
-        updateButtonStates(currentStatus);
         Toast.makeText(this, R.string.question_closed, Toast.LENGTH_SHORT).show();
         
         // 延迟退出
@@ -398,7 +460,10 @@ public class AnswerActivity extends AppCompatActivity {
                 int unreadCount = messageDao.getUnreadMessageCount(questionId, currentUserId);
                 if (unreadCount > 0) {
                     runOnUiThread(() -> {
-                        chatViewModel.markMessagesAsRead(questionId);
+                        // 防止Activity销毁后执行操作
+                        if (!isFinishing() && !isDestroyed()) {
+                            chatViewModel.markMessagesAsRead(questionId);
+                        }
                     });
                 }
             });

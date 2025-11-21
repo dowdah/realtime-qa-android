@@ -113,7 +113,9 @@ public class RegisterActivity extends AppCompatActivity {
         hideKeyboard();
         
         // 获取角色
-        String role = binding.radioStudent.isChecked() ? "student" : "tutor";
+        String role = binding.radioStudent.isChecked() ? 
+            com.dowdah.asknow.constants.AppConstants.ROLE_STUDENT : 
+            com.dowdah.asknow.constants.AppConstants.ROLE_TUTOR;
         
         // 发起注册请求
         viewModel.register(username, password, role);
@@ -134,7 +136,7 @@ public class RegisterActivity extends AppCompatActivity {
     
     private void navigateToMain(String role) {
         Intent intent;
-        if ("tutor".equalsIgnoreCase(role)) {
+        if (com.dowdah.asknow.constants.AppConstants.ROLE_TUTOR.equalsIgnoreCase(role)) {
             intent = new Intent(this, TutorMainActivity.class);
         } else {
             intent = new Intent(this, StudentMainActivity.class);

@@ -1,4 +1,4 @@
-package com.dowdah.asknow.constants;
+package com.dowdah.asknow.constants.enums;
 
 /**
  * 问题状态常量

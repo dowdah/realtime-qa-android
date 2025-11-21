@@ -10,7 +10,7 @@ import androidx.lifecycle.Observer;
 
 import com.dowdah.asknow.base.BaseViewModel;
 import com.dowdah.asknow.constants.AppConstants;
-import com.dowdah.asknow.constants.WebSocketMessageType;
+import com.dowdah.asknow.constants.enums.WebSocketMessageType;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
 import com.dowdah.asknow.data.model.WebSocketMessage;

@@ -3,6 +3,7 @@ package com.dowdah.asknow.base;
 import android.app.Application;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
@@ -46,6 +47,7 @@ public abstract class BaseViewModel extends AndroidViewModel {
      * 
      * @return 错误消息
      */
+    @NonNull
     public LiveData<String> getErrorMessage() {
         return errorMessage;
     }
@@ -55,6 +57,7 @@ public abstract class BaseViewModel extends AndroidViewModel {
      * 
      * @return 加载状态
      */
+    @NonNull
     public LiveData<Boolean> getLoading() {
         return loading;
     }
@@ -64,6 +67,7 @@ public abstract class BaseViewModel extends AndroidViewModel {
      * 
      * @return 同步状态
      */
+    @NonNull
     public LiveData<Boolean> getIsSyncing() {
         return isSyncing;
     }
@@ -73,6 +77,7 @@ public abstract class BaseViewModel extends AndroidViewModel {
      * 
      * @return 加载更多状态
      */
+    @NonNull
     public LiveData<Boolean> getIsLoadingMore() {
         return isLoadingMore;
     }
@@ -82,6 +87,7 @@ public abstract class BaseViewModel extends AndroidViewModel {
      * 
      * @return 是否还有更多数据
      */
+    @NonNull
     public LiveData<Boolean> getHasMoreData() {
         return hasMoreData;
     }
@@ -91,7 +97,7 @@ public abstract class BaseViewModel extends AndroidViewModel {
      * 
      * @param error 错误消息
      */
-    protected void setError(String error) {
+    protected void setError(@Nullable String error) {
         errorMessage.postValue(error);
     }
     
@@ -142,7 +148,7 @@ public abstract class BaseViewModel extends AndroidViewModel {
      * 
      * @param runnable 要执行的任务
      */
-    protected void executeInBackground(Runnable runnable) {
+    protected void executeInBackground(@Nullable Runnable runnable) {
         if (runnable != null) {
             executor.execute(runnable);
         }
@@ -153,7 +159,7 @@ public abstract class BaseViewModel extends AndroidViewModel {
      * 
      * @param runnable 要执行的任务
      */
-    protected void executeOnIO(Runnable runnable) {
+    protected void executeOnIO(@NonNull Runnable runnable) {
         ThreadUtils.executeOnIO(runnable);
     }
     
@@ -162,7 +168,7 @@ public abstract class BaseViewModel extends AndroidViewModel {
      * 
      * @param runnable 要执行的任务
      */
-    protected void executeOnMain(Runnable runnable) {
+    protected void executeOnMain(@NonNull Runnable runnable) {
         ThreadUtils.executeOnMain(runnable);
     }
     
@@ -172,7 +178,7 @@ public abstract class BaseViewModel extends AndroidViewModel {
      * @param throwable 异常
      * @param defaultMessage 默认错误消息
      */
-    protected void handleError(Throwable throwable, String defaultMessage) {
+    protected void handleError(@Nullable Throwable throwable, @NonNull String defaultMessage) {
         String message = throwable.getMessage();
         if (message == null || message.isEmpty()) {
             message = defaultMessage;
@@ -187,7 +193,8 @@ public abstract class BaseViewModel extends AndroidViewModel {
      * @param error 异常对象
      * @return 用户友好的错误信息
      */
-    protected String getDetailedErrorMessage(Throwable error) {
+    @NonNull
+    protected String getDetailedErrorMessage(@Nullable Throwable error) {
         return ErrorHandler.getDetailedErrorMessage(error);
     }
     

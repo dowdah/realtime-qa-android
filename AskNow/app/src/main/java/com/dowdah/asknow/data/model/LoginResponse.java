@@ -1,5 +1,11 @@
 package com.dowdah.asknow.data.model;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
+/**
+ * 登录响应数据模型
+ */
 public class LoginResponse {
     private boolean success;
     private String message;

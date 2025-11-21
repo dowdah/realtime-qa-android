@@ -21,11 +21,15 @@ import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 
+/**
+ * 网络模块
+ * 提供网络相关的依赖注入（Retrofit、OkHttp、Gson等）
+ */
 @Module
 @InstallIn(SingletonComponent.class)
 public class NetworkModule {
     
-    // 从 BuildConfig 读取后端地址，根据构建类型自动切换
+    // 从BuildConfig读取后端地址，根据构建类型自动切换
     private static final String BASE_URL = BuildConfig.BASE_URL;
     
     @Provides

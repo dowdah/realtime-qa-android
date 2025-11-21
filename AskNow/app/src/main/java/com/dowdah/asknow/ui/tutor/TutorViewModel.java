@@ -6,8 +6,8 @@ import androidx.annotation.NonNull;
 import androidx.lifecycle.LiveData;
 
 import com.dowdah.asknow.constants.AppConstants;
-import com.dowdah.asknow.constants.QuestionStatus;
-import com.dowdah.asknow.constants.WebSocketMessageType;
+import com.dowdah.asknow.constants.enums.QuestionStatus;
+import com.dowdah.asknow.constants.enums.WebSocketMessageType;
 import com.dowdah.asknow.data.local.dao.QuestionDao;
 import com.dowdah.asknow.data.local.entity.QuestionEntity;
 import com.dowdah.asknow.data.repository.QuestionRepository;

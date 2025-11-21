@@ -13,8 +13,6 @@ import com.dowdah.asknow.data.model.RegisterResponse;
 import com.dowdah.asknow.data.model.UploadResponse;
 import com.google.gson.JsonObject;
 
-import java.util.List;
-
 import okhttp3.MultipartBody;
 import retrofit2.Call;
 import retrofit2.http.Body;

@@ -11,10 +11,14 @@ import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
+/**
+ * WebSocket客户端
+ * 管理WebSocket连接，提供自动重连功能
+ */
 public class WebSocketClient {
     private static final String TAG = "WebSocketClient";
-    private static final int[] BACKOFF_DELAYS = {1000, 2000, 4000, 8000, 16000, 30000}; // milliseconds
-    private static final int MAX_RETRY_COUNT = 10; // 最多重连10次
+    private static final int[] BACKOFF_DELAYS = com.dowdah.asknow.constants.AppConstants.WEBSOCKET_BACKOFF_DELAYS;
+    private static final int MAX_RETRY_COUNT = com.dowdah.asknow.constants.AppConstants.WEBSOCKET_MAX_RETRY_COUNT;
     
     private WebSocket webSocket;
     private final OkHttpClient client;
@@ -22,11 +26,34 @@ public class WebSocketClient {
     private final WebSocketCallback callback;
     private int retryCount = 0;
     private boolean isManuallyDisconnected = false;
+    private Thread reconnectThread;
     
+    /**
+     * WebSocket回调接口
+     */
     public interface WebSocketCallback {
+        /**
+         * 连接建立时回调
+         */
         void onConnected();
+        
+        /**
+         * 收到消息时回调
+         * 
+         * @param message WebSocket消息
+         */
         void onMessage(WebSocketMessage message);
+        
+        /**
+         * 连接断开时回调
+         */
         void onDisconnected();
+        
+        /**
+         * 发生错误时回调
+         * 
+         * @param error 错误信息
+         */
         void onError(Throwable error);
     }
     
@@ -72,7 +99,7 @@ public class WebSocketClient {
             @Override
             public void onClosing(WebSocket webSocket, int code, String reason) {
                 Log.d(TAG, "WebSocket closing: " + reason);
-                webSocket.close(1000, null);
+                webSocket.close(com.dowdah.asknow.constants.AppConstants.WEBSOCKET_NORMAL_CLOSURE_CODE, null);
             }
             
             @Override
@@ -102,8 +129,16 @@ public class WebSocketClient {
     
     public void disconnect() {
         isManuallyDisconnected = true;
+        
+        // 中断待处理的重连线程
+        if (reconnectThread != null && reconnectThread.isAlive()) {
+            reconnectThread.interrupt();
+            reconnectThread = null;
+            Log.d(TAG, "Reconnect thread interrupted");
+        }
+        
         if (webSocket != null) {
-            webSocket.close(1000, "Manual disconnect");
+            webSocket.close(com.dowdah.asknow.constants.AppConstants.WEBSOCKET_NORMAL_CLOSURE_CODE, "Manual disconnect");
             webSocket = null;
         }
     }
@@ -131,27 +166,34 @@ public class WebSocketClient {
             return;
         }
         
+        // 取消之前的重连线程（如果存在）
+        if (reconnectThread != null && reconnectThread.isAlive()) {
+            reconnectThread.interrupt();
+        }
+        
         int delay = BACKOFF_DELAYS[Math.min(retryCount, BACKOFF_DELAYS.length - 1)];
         Log.d(TAG, "Reconnecting in " + delay + "ms (attempt " + (retryCount + 1) + "/" + MAX_RETRY_COUNT + ")");
         
         retryCount++;
         
         // 使用新线程处理延迟重连，避免阻塞 WebSocket 回调线程
-        new Thread(() -> {
+        reconnectThread = new Thread(() -> {
             try {
                 Thread.sleep(delay);
                 if (!isManuallyDisconnected) {
                     connect();
                 }
             } catch (InterruptedException e) {
-                Log.w(TAG, "Reconnect delay interrupted", e);
+                Log.d(TAG, "Reconnect cancelled due to interrupt");
                 Thread.currentThread().interrupt();
             }
-        }).start();
+        });
+        reconnectThread.start();
     }
     
     /**
-     * 重置重连计数器（当手动重连时使用）
+     * 重置重连计数器
+     * 当手动重连时使用
      */
     public void resetRetryCount() {
         retryCount = 0;

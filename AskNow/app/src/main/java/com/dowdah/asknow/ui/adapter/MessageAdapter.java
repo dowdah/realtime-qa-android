@@ -1,22 +1,27 @@
 package com.dowdah.asknow.ui.adapter;
 
+import android.content.Context;
+import android.content.res.Resources;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
-import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.bumptech.glide.Glide;
-import com.dowdah.asknow.BuildConfig;
 import com.dowdah.asknow.R;
+import com.dowdah.asknow.constants.enums.MessageStatus;
+import com.dowdah.asknow.constants.enums.MessageType;
 import com.dowdah.asknow.data.local.entity.MessageEntity;
 import com.dowdah.asknow.databinding.ItemMessageReceivedBinding;
 import com.dowdah.asknow.databinding.ItemMessageSentBinding;
+import com.dowdah.asknow.utils.ImageBindingHelper;
+import com.google.android.material.color.MaterialColors;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,30 +36,69 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
     private long currentUserId;
     private boolean showLoadingFooter = false;
     private boolean showRetryFooter = false;
-    private OnRetryClickListener retryListener;
+    private BaseLoadingFooterViewHolder.OnRetryClickListener retryListener;
     private OnImageClickListener imageClickListener;
     
-    public interface OnRetryClickListener {
-        void onRetryClick();
+    /**
+     * 图片点击监听器接口
+     */
+    public interface OnImageClickListener {
+        void onImageClick(@NonNull String imagePath);
     }
     
-    public interface OnImageClickListener {
-        void onImageClick(String imagePath);
+    /**
+     * 消息重试监听器接口
+     */
+    public interface OnMessageRetryListener {
+        /**
+         * 当用户点击重试按钮时调用
+         * 
+         * @param messageId 消息ID
+         * @param content 消息内容
+         * @param messageType 消息类型
+         */
+        void onRetryMessage(long messageId, @NonNull String content, @NonNull String messageType);
     }
+    
+    private OnMessageRetryListener messageRetryListener;
     
     public MessageAdapter(long currentUserId) {
         this.currentUserId = currentUserId;
     }
     
-    public void setImageClickListener(OnImageClickListener listener) {
+    /**
+     * 设置图片点击监听器
+     * 
+     * @param listener 图片点击监听器
+     */
+    public void setImageClickListener(@Nullable OnImageClickListener listener) {
         this.imageClickListener = listener;
     }
     
-    public void setRetryListener(OnRetryClickListener retryListener) {
+    /**
+     * 设置消息重试监听器
+     * 
+     * @param listener 消息重试监听器
+     */
+    public void setMessageRetryListener(@Nullable OnMessageRetryListener listener) {
+        this.messageRetryListener = listener;
+    }
+    
+    /**
+     * 设置重试点击监听器
+     * 
+     * @param retryListener 重试点击监听器
+     */
+    public void setRetryListener(@Nullable BaseLoadingFooterViewHolder.OnRetryClickListener retryListener) {
         this.retryListener = retryListener;
     }
     
-    public void setMessages(List<MessageEntity> newMessages) {
+    /**
+     * 设置消息列表（使用DiffUtil优化）
+     * 
+     * @param newMessages 新的消息列表
+     */
+    public void setMessages(@Nullable List<MessageEntity> newMessages) {
         if (newMessages == null) {
             newMessages = new ArrayList<>();
         }
@@ -65,7 +109,7 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
     }
     
     /**
-     * DiffUtil Callback for efficient list updates
+     * DiffUtil回调，用于高效的列表更新
      */
     private static class MessageDiffCallback extends DiffUtil.Callback {
         private final List<MessageEntity> oldList;
@@ -169,18 +213,18 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         } else {
             View view = LayoutInflater.from(parent.getContext())
                 .inflate(R.layout.item_loading_footer, parent, false);
-            return new LoadingFooterViewHolder(view);
+            return new BaseLoadingFooterViewHolder(view);
         }
     }
     
     @Override
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-        if (holder instanceof LoadingFooterViewHolder) {
-            ((LoadingFooterViewHolder) holder).bind(showRetryFooter, retryListener);
+        if (holder instanceof BaseLoadingFooterViewHolder) {
+            ((BaseLoadingFooterViewHolder) holder).bind(showRetryFooter, retryListener);
         } else {
             MessageEntity message = messages.get(position);
             if (holder instanceof SentMessageViewHolder) {
-                ((SentMessageViewHolder) holder).bind(message, imageClickListener);
+                ((SentMessageViewHolder) holder).bind(message, imageClickListener, messageRetryListener);
             } else if (holder instanceof ReceivedMessageViewHolder) {
                 ((ReceivedMessageViewHolder) holder).bind(message, imageClickListener);
             }
@@ -192,6 +236,44 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         return messages.size() + (showLoadingFooter || showRetryFooter ? 1 : 0);
     }
     
+    /**
+     * 绑定消息内容到视图（图片或文本）
+     * 
+     * @param message 消息实体
+     * @param imageView 图片视图
+     * @param textView 文本视图
+     * @param imageClickListener 图片点击监听器
+     */
+    private static void bindMessageContent(
+        @NonNull MessageEntity message,
+        @NonNull ImageView imageView,
+        @NonNull TextView textView,
+        @Nullable OnImageClickListener imageClickListener
+    ) {
+        String messageType = message.getMessageType();
+        String content = message.getContent();
+        
+        if (MessageType.IMAGE.equals(messageType)) {
+            // 显示图片消息
+            textView.setVisibility(View.GONE);
+            imageView.setVisibility(View.VISIBLE);
+            
+            ImageBindingHelper.loadMessageImage(imageView.getContext(), content, imageView);
+            
+            // 添加图片点击事件
+            imageView.setOnClickListener(v -> {
+                if (imageClickListener != null) {
+                    imageClickListener.onImageClick(content);
+                }
+            });
+        } else {
+            // 显示文本消息
+            imageView.setVisibility(View.GONE);
+            textView.setVisibility(View.VISIBLE);
+            textView.setText(content != null ? content : "");
+        }
+    }
+    
     static class SentMessageViewHolder extends RecyclerView.ViewHolder {
         private final ItemMessageSentBinding binding;
         
@@ -200,39 +282,84 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
             this.binding = binding;
         }
         
-        void bind(MessageEntity message, OnImageClickListener imageClickListener) {
+        /**
+         * 绑定消息数据到视图
+         * 
+         * @param message 消息实体
+         * @param imageClickListener 图片点击监听器
+         * @param retryListener 重试监听器
+         */
+        void bind(@Nullable MessageEntity message, 
+                  @Nullable OnImageClickListener imageClickListener,
+                  @Nullable OnMessageRetryListener retryListener) {
             if (message == null) {
                 return;
             }
             
-            String messageType = message.getMessageType();
-            String content = message.getContent();
+            // 绑定消息内容
+            bindMessageContent(message, binding.ivMessageImage, binding.tvMessage, imageClickListener);
             
-            if ("image".equals(messageType)) {
-                // 显示图片消息
-                binding.tvMessage.setVisibility(View.GONE);
-                binding.ivMessageImage.setVisibility(View.VISIBLE);
+            // 处理发送状态
+            String status = message.getSendStatus();
+            Context context = binding.getRoot().getContext();
+            
+            if (MessageStatus.PENDING.equals(status)) {
+                // 显示加载指示器
+                binding.pbSending.setVisibility(View.VISIBLE);
+                binding.btnRetry.setVisibility(View.GONE);
+                // 正常边框
+                binding.cardMessage.setStrokeWidth(0);
+            } else if (MessageStatus.FAILED.equals(status)) {
+                // 显示重试按钮
+                binding.pbSending.setVisibility(View.GONE);
+                binding.btnRetry.setVisibility(View.VISIBLE);
                 
-                String imageUrl = BuildConfig.BASE_URL.replaceAll("/$", "") + content;
-                Glide.with(binding.getRoot().getContext())
-                    .load(imageUrl)
-                    .centerCrop()
-                    .placeholder(R.drawable.ic_image_placeholder)
-                    .error(R.drawable.ic_image_error)
-                    .into(binding.ivMessageImage);
-                
-                // 添加图片点击事件
-                binding.ivMessageImage.setOnClickListener(v -> {
-                    if (imageClickListener != null) {
-                        imageClickListener.onImageClick(content);
+                // 设置重试按钮点击事件
+                binding.btnRetry.setOnClickListener(v -> {
+                    if (retryListener != null) {
+                        retryListener.onRetryMessage(
+                            message.getId(),
+                            message.getContent(),
+                            message.getMessageType()
+                        );
                     }
                 });
+                
+                // 设置红色边框
+                int strokeWidth = dpToPx(context, 2);
+                // 使用 TypedValue 获取主题的 colorError 属性
+                TypedValue typedValue = new TypedValue();
+                context.getTheme().resolveAttribute(
+                    android.R.attr.colorError, 
+                    typedValue, 
+                    true
+                );
+                int errorColor = typedValue.data;
+                binding.cardMessage.setStrokeWidth(strokeWidth);
+                binding.cardMessage.setStrokeColor(errorColor);
             } else {
-                // 显示文本消息
-                binding.ivMessageImage.setVisibility(View.GONE);
-                binding.tvMessage.setVisibility(View.VISIBLE);
-                binding.tvMessage.setText(content != null ? content : "");
+                // SENT 状态：隐藏所有指示器
+                binding.pbSending.setVisibility(View.GONE);
+                binding.btnRetry.setVisibility(View.GONE);
+                // 正常边框
+                binding.cardMessage.setStrokeWidth(0);
             }
+        }
+        
+        /**
+         * 将dp转换为px
+         * 
+         * @param context 上下文
+         * @param dp dp值
+         * @return px值
+         */
+        private static int dpToPx(@NonNull Context context, int dp) {
+            Resources resources = context.getResources();
+            return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                dp,
+                resources.getDisplayMetrics()
+            );
         }
     }
     
@@ -244,39 +371,18 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
             this.binding = binding;
         }
         
-        void bind(MessageEntity message, OnImageClickListener imageClickListener) {
+        /**
+         * 绑定消息数据到视图
+         * 
+         * @param message 消息实体
+         * @param imageClickListener 图片点击监听器
+         */
+        void bind(@Nullable MessageEntity message, @Nullable OnImageClickListener imageClickListener) {
             if (message == null) {
                 return;
             }
             
-            String messageType = message.getMessageType();
-            String content = message.getContent();
-            
-            if ("image".equals(messageType)) {
-                // 显示图片消息
-                binding.tvMessage.setVisibility(View.GONE);
-                binding.ivMessageImage.setVisibility(View.VISIBLE);
-                
-                String imageUrl = BuildConfig.BASE_URL.replaceAll("/$", "") + content;
-                Glide.with(binding.getRoot().getContext())
-                    .load(imageUrl)
-                    .centerCrop()
-                    .placeholder(R.drawable.ic_image_placeholder)
-                    .error(R.drawable.ic_image_error)
-                    .into(binding.ivMessageImage);
-                
-                // 添加图片点击事件
-                binding.ivMessageImage.setOnClickListener(v -> {
-                    if (imageClickListener != null) {
-                        imageClickListener.onImageClick(content);
-                    }
-                });
-            } else {
-                // 显示文本消息
-                binding.ivMessageImage.setVisibility(View.GONE);
-                binding.tvMessage.setVisibility(View.VISIBLE);
-                binding.tvMessage.setText(content != null ? content : "");
-            }
+            bindMessageContent(message, binding.ivMessageImage, binding.tvMessage, imageClickListener);
             
             // 显示未读标记
             View unreadIndicator = binding.getRoot().findViewById(R.id.unread_indicator);
@@ -286,36 +392,6 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
                 } else {
                     unreadIndicator.setVisibility(View.VISIBLE);
                 }
-            }
-        }
-    }
-    
-    static class LoadingFooterViewHolder extends RecyclerView.ViewHolder {
-        private final ProgressBar progressBar;
-        private final TextView tvLoadingText;
-        private final TextView tvRetry;
-        
-        public LoadingFooterViewHolder(@NonNull View itemView) {
-            super(itemView);
-            progressBar = itemView.findViewById(R.id.progressBar);
-            tvLoadingText = itemView.findViewById(R.id.tvLoadingText);
-            tvRetry = itemView.findViewById(R.id.tvRetry);
-        }
-        
-        public void bind(boolean showRetry, OnRetryClickListener retryListener) {
-            if (showRetry) {
-                progressBar.setVisibility(View.GONE);
-                tvLoadingText.setVisibility(View.GONE);
-                tvRetry.setVisibility(View.VISIBLE);
-                tvRetry.setOnClickListener(v -> {
-                    if (retryListener != null) {
-                        retryListener.onRetryClick();
-                    }
-                });
-            } else {
-                progressBar.setVisibility(View.VISIBLE);
-                tvLoadingText.setVisibility(View.VISIBLE);
-                tvRetry.setVisibility(View.GONE);
             }
         }
     }
